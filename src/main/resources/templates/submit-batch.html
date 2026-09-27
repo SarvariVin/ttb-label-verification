@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{fragments/layout :: head('Batch upload')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: topbar}"></header>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>Batch upload</h1>
+      <p class="muted">Submit up to 50 labels at once with a CSV file and the matching images.</p>
+    </div>
+  </div>
+
+  <div class="alert alert-bad" role="alert" th:if="${error}" th:text="${error}"></div>
+
+  <div class="card" th:if="${results}">
+    <h2>Results</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Row</th><th>Brand</th><th>Outcome</th><th>Details</th></tr></thead>
+        <tbody>
+        <tr th:each="r : ${results}">
+          <td th:text="${r.rowNumber}">2</td>
+          <td><a th:if="${r.labelId}" th:href="@{/labels/{id}(id=${r.labelId})}" th:text="${r.brandName}"></a>
+            <span th:unless="${r.labelId}" th:text="${r.brandName}"></span></td>
+          <td><span class="badge" th:classappend="${r.labelId} ? 'badge-pending-review' : 'badge-rejected'"
+                    th:text="${r.labelId} ? 'Submitted' : 'Failed'"></span></td>
+          <td class="small" th:text="${r.error != null} ? ${r.error} : 'AI proposal: ' + ${r.status}"></td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <form class="card" th:action="@{/submit/batch}" method="post" enctype="multipart/form-data" data-busy="Processing batch…">
+      <h2>Upload</h2>
+      <div class="field">
+        <label for="csv">CSV file</label>
+        <input type="file" id="csv" name="csv" accept=".csv,text/csv" required>
+      </div>
+      <div class="field">
+        <label for="images">Label images</label>
+        <input type="file" id="images" name="images" accept="image/jpeg,image/png,image/webp" multiple required>
+        <p class="hint">Filenames must match the <span class="mono">images</span> column.</p>
+      </div>
+      <button class="btn btn-primary" type="submit">Submit batch</button>
+    </form>
+
+    <div class="card">
+      <h2>CSV format</h2>
+      <p class="small">Required columns: <span class="mono">beverage_type, container_size_ml, brand_name, images</span>.
+        Separate multiple images with <span class="mono">;</span>.</p>
+      <p class="small">Optional: <span class="mono">serial_number, fanciful_name, class_type, class_type_code, alcohol_content,
+        net_contents, name_and_address, qualifying_phrase, country_of_origin, grape_varietal, appellation_of_origin,
+        vintage_year, sulfite_declaration, age_statement, state_of_distillation</span>.</p>
+      <p class="small">A sample file is in <span class="mono">test-labels/batch-example.csv</span>.</p>
+    </div>
+  </div>
+</main>
+</body>
+</html>

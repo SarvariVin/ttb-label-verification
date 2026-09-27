@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{fragments/layout :: head('Settings')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: topbar}"></header>
+<main>
+  <div class="page-header"><div><h1>Settings</h1><p class="muted">Specialist-only. Changes apply to the next analysis.</p></div></div>
+  <th:block th:replace="~{fragments/layout :: flash}"></th:block>
+
+  <form th:action="@{/settings}" method="post">
+    <div class="grid grid-2">
+      <fieldset class="card">
+        <legend>Submission pipeline</legend>
+        <div class="field">
+          <label><input type="radio" name="pipelineModel" value="local" th:checked="${pipelineModel == 'local'}">
+            Local — Tesseract OCR + text search (free, no bounding boxes)</label>
+          <p class="hint" th:text="${localAvailable} ? 'Tesseract detected.' : 'Tesseract not detected — install it or submissions will fail over to cloud.'"></p>
+        </div>
+        <div class="field">
+          <label><input type="radio" name="pipelineModel" value="cloud" th:checked="${pipelineModel == 'cloud'}" th:disabled="${!cloudAvailable}">
+            Cloud — Google Vision + OpenAI (bounding boxes, image classification)</label>
+          <p class="hint" th:text="${cloudAvailable} ? 'API keys configured.' : 'Set GOOGLE_VISION_API_KEY and OPENAI_API_KEY to enable.'"></p>
+        </div>
+        <p class="hint">If the selected pipeline fails, the other one is tried automatically when available.</p>
+      </fieldset>
+
+      <fieldset class="card">
+        <legend>Approval &amp; SLA targets</legend>
+        <div class="field">
+          <label for="approvalThreshold">Ready-to-approve confidence threshold (%)</label>
+          <input type="number" id="approvalThreshold" name="approvalThreshold" min="50" max="100" th:value="${threshold}" required>
+        </div>
+        <div class="field">
+          <label for="reviewResponseHours">Review response target (hours)</label>
+          <input type="number" id="reviewResponseHours" name="reviewResponseHours" min="1" th:value="${sla.reviewResponseHours}" required>
+        </div>
+        <div class="field">
+          <label for="totalTurnaroundHours">Total turnaround target (hours)</label>
+          <input type="number" id="totalTurnaroundHours" name="totalTurnaroundHours" min="1" th:value="${sla.totalTurnaroundHours}" required>
+        </div>
+        <div class="field">
+          <label for="maxQueueDepth">Maximum queue depth</label>
+          <input type="number" id="maxQueueDepth" name="maxQueueDepth" min="1" th:value="${sla.maxQueueDepth}" required>
+        </div>
+      </fieldset>
+    </div>
+    <div class="actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
+  </form>
+
+  <div class="card" th:unless="${#maps.isEmpty(strictness)}">
+    <h2>Field strictness (reference)</h2>
+    <p class="small muted">Recorded per field; the comparison strategies in docs/ai-pipelines.md are applied today.</p>
+    <table>
+      <thead><tr><th>Field</th><th>Strictness</th></tr></thead>
+      <tbody><tr th:each="e : ${strictness}"><td class="mono" th:text="${e.key}"></td><td th:text="${e.value}"></td></tr></tbody>
+    </table>
+  </div>
+</main>
+</body>
+</html>

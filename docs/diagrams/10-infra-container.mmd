@@ -1,0 +1,18 @@
+%% Infrastructure — container topology (docker compose --profile app)
+flowchart TB
+    user(["Browser / API client"]) -->|":8080"| app
+    subgraph host["Container host"]
+        subgraph net["compose network"]
+            app["app container<br/>eclipse-temurin:21-jre + tesseract-ocr<br/>uid 10001 (non-root)<br/>healthcheck /actuator/health"]
+            pg[("postgres:17-alpine<br/>bound to 127.0.0.1 only")]
+        end
+        v1[("volume: uploads<br/>/app/data/uploads")]
+        v2[("volume: pgdata")]
+        env[".env (not committed)<br/>DATABASE_* · APP_SEED_PASSWORD<br/>optional AI keys"]
+    end
+    app -->|JDBC 5432| pg
+    app --- v1
+    pg --- v2
+    env -. injected at start .-> app
+    env -. injected at start .-> pg
+    app -. "HTTPS 443 (optional)" .-> ai["Google Vision / OpenAI"]

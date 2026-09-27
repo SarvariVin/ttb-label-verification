@@ -1,0 +1,88 @@
+spring:
+  application:
+    name: label-verification
+  datasource:
+    # No default credentials: provide DATABASE_* via environment or a secrets manager.
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/labelverification}
+    username: ${DATABASE_USERNAME:}
+    password: ${DATABASE_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 60MB
+  thymeleaf:
+    cache: true
+  session:
+    # Sessions live in the database (tables created by Flyway V3), so a restart or sleep/wake
+    # of the app does not sign users out.
+    jdbc:
+      initialize-schema: never
+      cleanup-cron: "0 */5 * * * *"
+
+server:
+  port: ${PORT:8080}
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:200}
+  error:
+    include-stacktrace: never
+  servlet:
+    session:
+      timeout: 8h
+      cookie:
+        http-only: true
+        same-site: lax
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  # Upload storage (local filesystem by default)
+  storage:
+    type: ${APP_STORAGE_TYPE:filesystem}   # filesystem | database
+    directory: ${APP_STORAGE_DIR:./data/uploads}
+  # Bootstrap accounts on an empty database. Password comes from APP_SEED_PASSWORD;
+  # when unset, a random one is generated and logged once at startup.
+  seed:
+    enabled: ${APP_SEED:true}
+    password: ${APP_SEED_PASSWORD:}
+    # One-time recovery: set to true to reset the bootstrap accounts to APP_SEED_PASSWORD, then remove.
+    reset-password: ${APP_SEED_RESET_PASSWORD:false}
+    specialist-email: ${APP_SEED_SPECIALIST_EMAIL:specialist@example.gov}
+    applicant-email: ${APP_SEED_APPLICANT_EMAIL:applicant@example.com}
+    applicant-company: ${APP_SEED_APPLICANT_COMPANY:Sample Distilling Co.}
+  # Extra accounts, as a JSON array (see docs/user-accounts.md). Prefer bcrypt hashes over plain passwords.
+  users: ${APP_USERS:}
+  # Demo mode: account picker on the login page, sign-in without password. OFF by default.
+  demo-login:
+    enabled: ${APP_DEMO_LOGIN:false}
+    accounts: ${APP_DEMO_LOGIN_ACCOUNTS:}
+  pipeline:
+    timeout: 60s
+  # Local OCR (Tesseract via Tess4J). Blank paths are auto-detected.
+  ocr:
+    tessdata-path: ${TESSDATA_PREFIX:}
+    library-path: ${TESSERACT_LIBRARY_PATH:}
+    language: eng
+    max-concurrent: ${OCR_MAX_CONCURRENT:2}
+  # Optional cloud AI. The cloud pipeline is only available when BOTH keys are set.
+  cloud:
+    google-vision-api-key: ${GOOGLE_VISION_API_KEY:}
+    openai-api-key: ${OPENAI_API_KEY:}
+    openai-model: ${OPENAI_MODEL:gpt-4.1-nano}
+    openai-base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}

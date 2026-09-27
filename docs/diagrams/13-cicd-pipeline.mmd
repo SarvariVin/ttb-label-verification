@@ -1,0 +1,11 @@
+%% Infrastructure — CI/CD pipeline (vendor-neutral; scripts/ci.sh is the build entry point)
+flowchart LR
+    commit["Commit / merge request"] --> build["Build & test<br/>scripts/ci.sh<br/>./mvnw verify (unit, integration, real-OCR end-to-end)"]
+    build --> scan["Security scans<br/>dependency CVEs · SAST<br/>SBOM (CycloneDX)"]
+    scan --> image["Container image<br/>docker build · image scan<br/>sign + push to registry"]
+    image --> stg["Deploy: staging<br/>Flyway migrate · smoke tests<br/>/actuator/health"]
+    stg --> approve{"Change approval"}
+    approve -->|approved| prod["Deploy: production<br/>rolling / blue-green"]
+    approve -->|rejected| stop(["Stop"])
+    prod --> verify["Post-deploy checks<br/>health · error rate · pipeline latency"]
+    verify -->|regression| rollback["Roll back image<br/>(schema is forward-only)"]

@@ -1,0 +1,38 @@
+%% Applicant submission — the specialist never waits for AI
+sequenceDiagram
+    autonumber
+    actor A as Applicant
+    participant C as SubmitController / LabelApiController
+    participant S as SubmissionService
+    participant V as ImageFileValidator
+    participant FS as ImageStorage
+    participant DB as Database
+    participant AN as LabelAnalysisService
+    participant X as ExtractionService
+    participant P as Pipeline (local or cloud)
+
+    A->>C: POST form data + images (multipart)
+    C->>C: Bean Validation (LabelApplicationForm)
+    C->>S: submit(user, form, images)
+    loop each image
+        S->>V: validate(bytes, declared type)
+        V-->>S: detected type (magic bytes)
+        S->>FS: store(bytes)
+    end
+    S->>DB: TX1 insert label (PROCESSING) + application_data + label_images
+    S->>AN: analyze(labelId)
+    AN->>DB: TX2 load expected fields + image keys
+    AN->>FS: load image bytes
+    AN->>X: extract(images, type, expected)
+    X->>P: run with timeout (60s)
+    alt primary pipeline fails
+        X->>P: fallback pipeline (if available)
+    end
+    P-->>X: ExtractionResult (fields, boxes, metrics)
+    X-->>AN: result
+    AN->>AN: FieldComparator per field → StatusDeterminer
+    AN->>DB: TX3 insert validation_result + items,<br/>label → PENDING_REVIEW, ai_proposed_status, confidence
+    AN-->>S: Outcome
+    S-->>C: SubmissionResult
+    C-->>A: 201 Created / redirect to label page
+    Note over S,DB: On failure the label is set to PENDING (retry via Re-analyze). A label stuck in PROCESSING surfaces as PENDING_REVIEW after 5 minutes.

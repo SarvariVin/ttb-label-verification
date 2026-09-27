@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{fragments/layout :: head('Dashboard')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: topbar}"></header>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>Review dashboard</h1>
+      <p class="muted">Analysis is already done — approve what the AI verified, review the rest.</p>
+    </div>
+  </div>
+  <th:block th:replace="~{fragments/layout :: flash}"></th:block>
+
+  <section class="grid grid-4" aria-label="Service levels">
+    <div class="card stat" th:each="m : ${sla.metrics}" th:classappend="'sla-' + ${@fmt.css(m.status)}">
+      <span class="muted small" th:text="${m.name}">Metric</span>
+      <span class="value" th:text="${m.value}">0</span>
+      <span class="small"><span class="badge" th:classappend="'badge-' + ${@fmt.css(m.status)}" th:text="${m.status.label()}">On target</span>
+        <span class="muted">target <span th:text="${m.target}"></span></span></span>
+    </div>
+  </section>
+
+  <div class="card">
+    <nav class="tabs" aria-label="Queues">
+      <a th:href="@{/(tab='ready')}" th:classappend="${tab == 'ready'} ? 'active'">Ready to approve <span class="count" th:text="${#lists.size(queues.readyToApprove)}">0</span></a>
+      <a th:href="@{/(tab='review')}" th:classappend="${tab == 'review'} ? 'active'">Needs review <span class="count" th:text="${#lists.size(queues.needsReview)}">0</span></a>
+      <a th:href="@{/(tab='all')}" th:classappend="${tab == 'all'} ? 'active'">All labels <span class="count" th:text="${#lists.size(queues.all)}">0</span></a>
+    </nav>
+
+    <!-- Ready to approve: batch form -->
+    <form th:if="${tab == 'ready'}" th:action="@{/labels/batch-approve}" method="post"
+          data-confirm="Approve all selected labels?">
+      <p class="muted small">Pending review, AI proposes approval, every field matches, confidence ≥ <span th:text="${threshold}">90</span>%.</p>
+      <div class="empty" th:if="${#lists.isEmpty(queues.readyToApprove)}">Nothing is ready for batch approval.</div>
+      <th:block th:unless="${#lists.isEmpty(queues.readyToApprove)}">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th><input type="checkbox" data-select-all="labelIds" aria-label="Select all"></th>
+              <th>Brand</th><th>Type</th><th>Applicant</th><th>Confidence</th><th>Submitted</th>
+            </tr></thead>
+            <tbody>
+            <tr th:each="s : ${queues.readyToApprove}">
+              <td><input type="checkbox" name="labelIds" th:value="${s.id}" th:attr="aria-label='Select ' + ${s.brandName}"></td>
+              <td><a th:href="@{/labels/{id}(id=${s.id})}" th:text="${s.brandName}">Brand</a></td>
+              <td th:text="${s.beverageType.label()}">Type</td>
+              <td th:text="${s.applicantName}">Applicant</td>
+              <td class="num"><meter min="0" max="100" th:value="${s.overallConfidence}"></meter> <span th:text="${s.overallConfidence} + '%'"></span></td>
+              <td class="small" th:text="${@fmt.dateTime(s.createdAt)}">date</td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="actions"><button class="btn btn-primary" type="submit">Approve selected</button></div>
+      </th:block>
+    </form>
+
+    <!-- Needs review / All -->
+    <th:block th:unless="${tab == 'ready'}" th:with="rows=${tab == 'review'} ? ${queues.needsReview} : ${queues.all}">
+      <div class="empty" th:if="${#lists.isEmpty(rows)}">No labels here.</div>
+      <div class="table-wrap" th:unless="${#lists.isEmpty(rows)}">
+        <table>
+          <thead><tr><th>Brand</th><th>Type</th><th>Applicant</th><th>Status</th><th>AI proposal</th><th>Confidence</th><th>Submitted</th></tr></thead>
+          <tbody>
+          <tr th:each="s : ${rows}">
+            <td><a th:href="@{/labels/{id}(id=${s.id})}" th:text="${s.brandName}">Brand</a></td>
+            <td th:text="${s.beverageType.label()}">Type</td>
+            <td th:text="${s.applicantName}">Applicant</td>
+            <td>
+              <span class="badge" th:classappend="'badge-' + ${@fmt.css(s.status)}" th:text="${@fmt.humanize(s.status)}">Status</span>
+              <div class="small muted" th:if="${s.deadline}" th:text="${@fmt.deadline(s.deadline)}"></div>
+            </td>
+            <td><span class="badge" th:if="${s.aiProposedStatus}" th:classappend="'badge-' + ${@fmt.css(s.aiProposedStatus)}" th:text="${@fmt.humanize(s.aiProposedStatus)}"></span></td>
+            <td class="num" th:text="${s.overallConfidence != null} ? ${s.overallConfidence} + '%' : '—'">—</td>
+            <td class="small" th:text="${@fmt.dateTime(s.createdAt)}">date</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </th:block>
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:labelverification-test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+app:
+  storage:
+    directory: ./target/test-uploads
+  seed:
+    # Test-only value; never used outside the in-memory test database.
+    password: test-only-seed-password

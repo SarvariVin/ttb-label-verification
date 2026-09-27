@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{fragments/layout :: head('Sign in')}"></head>
+<body class="login-page">
+<div class="login-wrap">
+  <div class="login-glow" aria-hidden="true"></div>
+  <div class="login-card">
+    <div class="login-stripe" aria-hidden="true"></div>
+    <div class="login-brand">
+      <div class="login-mark">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 5 7.5v7.3c0 6.6 4.6 12.3 11 13.9 6.4-1.6 11-7.3 11-13.9V7.5L16 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m11.5 16 3.2 3.2 6.3-6.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h1 class="login-title" th:text="${appName}">TTB Label Verification</h1>
+      <p class="login-tagline" th:text="${appTagline}">COLA label compliance review</p>
+    </div>
+    <div class="login-sep" aria-hidden="true"></div>
+
+    <div class="alert alert-bad" role="alert" th:if="${param.error}">Invalid email or password.</div>
+    <div class="alert alert-info" role="status" th:if="${param.logout}">You have been signed out.</div>
+
+    <form th:action="@{/login}" method="post" id="login-form"
+          th:with="hasDemo=${not #lists.isEmpty(demoAccounts)}"
+          th:data-demo-action="${hasDemo} ? @{/login/demo} : null">
+      <div class="field combo">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="username" required autofocus
+               placeholder="name@agency.gov"
+               th:attr="role=${hasDemo} ? 'combobox' : null,
+                        aria-controls=${hasDemo} ? 'demo-listbox' : null,
+                        aria-expanded=${hasDemo} ? 'false' : null,
+                        aria-autocomplete=${hasDemo} ? 'list' : null">
+        <div class="demo-panel" id="demo-panel" th:if="${hasDemo}" hidden>
+          <div class="demo-panel-title" id="demo-panel-title">Demo accounts</div>
+          <ul role="listbox" id="demo-listbox" aria-labelledby="demo-panel-title">
+            <li role="option" class="demo-option" aria-selected="false"
+                th:each="a, it : ${demoAccounts}" th:id="'demo-opt-' + ${it.index}"
+                th:data-email="${a.email}" th:data-name="${a.name}">
+              <span class="avatar" th:classappend="${a.role == 'SPECIALIST'} ? 'avatar-specialist' : 'avatar-applicant'"
+                    th:text="${@fmt.initials(a.name)}" aria-hidden="true">AB</span>
+              <span class="who">
+                <span class="who-name" th:text="${a.name}">Name</span>
+                <span class="who-email" th:text="${a.email}">email</span>
+              </span>
+              <span class="role-badge" th:classappend="${a.role == 'SPECIALIST'} ? 'role-specialist' : 'role-applicant'">
+                <svg th:if="${a.role == 'SPECIALIST'}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6l-7-3z"/></svg>
+                <svg th:unless="${a.role == 'SPECIALIST'}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+                <span th:text="${a.role == 'SPECIALIST'} ? 'Specialist' : 'Applicant'">Role</span>
+              </span>
+            </li>
+          </ul>
+          <p class="demo-panel-note">Demo mode — picking an account fills in the email and password.
+            Anyone who can reach this site can do the same.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required
+               placeholder="Enter your password">
+      </div>
+      <button class="btn btn-primary login-submit" type="submit" id="sign-in">
+        <span class="login-submit-label">Sign in</span>
+        <svg class="login-submit-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        <span class="spinner" aria-hidden="true"></span>
+      </button>
+    </form>
+
+    <noscript th:unless="${#lists.isEmpty(demoAccounts)}">
+      <form th:action="@{/login/demo}" method="post" class="demo-login">
+        <div class="field">
+          <label for="demo-email">Demo account (without JavaScript)</label>
+          <select id="demo-email" name="email" required>
+            <option th:each="a : ${demoAccounts}" th:value="${a.email}"
+                    th:text="${a.name} + ' — ' + ${a.email}"></option>
+          </select>
+        </div>
+        <button class="btn" type="submit">Sign in as selected</button>
+      </form>
+    </noscript>
+
+    <p class="login-footer">Authorized personnel only</p>
+  </div>
+</div>
+</body>
+</html>

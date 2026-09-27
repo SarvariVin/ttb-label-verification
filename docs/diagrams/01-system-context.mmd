@@ -1,0 +1,22 @@
+%% System context — who uses TTB Label Verification and what it depends on
+flowchart LR
+    applicant(["👤 Applicant<br/>(industry labeling team)"])
+    specialist(["👤 TTB Labeling Specialist"])
+
+    subgraph lvs["TTB Label Verification — Spring Boot 3.5 / Java 21"]
+        app["Web UI (Thymeleaf)<br/>REST API /api/v1<br/>AI verification pipeline"]
+    end
+
+    db[("PostgreSQL<br/>(H2 in demo profile)")]
+    fs[("Image storage<br/>local filesystem")]
+    tess["Tesseract OCR<br/>native libtesseract via Tess4J<br/><i>default · free · on-host</i>"]
+    vision["Google Cloud Vision<br/>TEXT_DETECTION<br/><i>opt-in</i>"]
+    openai["OpenAI Chat Completions<br/>structured output<br/><i>opt-in</i>"]
+
+    applicant -- "submit labels + Form 5100.31 data" --> app
+    specialist -- "review, approve, override, configure" --> app
+    app -- "JPA / Flyway" --> db
+    app -- "store / load images" --> fs
+    app -- "OCR (local pipeline)" --> tess
+    app -. "OCR with word boxes (cloud pipeline)" .-> vision
+    app -. "classify OCR words into fields" .-> openai

@@ -1,0 +1,10 @@
+%% Security: two filter chains + method security
+flowchart LR
+    req(["HTTP request"]) --> m{"path starts with /api/?"}
+    m -- yes --> api["API chain (@Order 1)<br/>STATELESS · HTTP Basic · CSRF off<br/>session cookie ignored<br/>/api/v1/settings/** → SPECIALIST<br/>401 on missing credentials"]
+    m -- no --> web["Web chain (@Order 2)<br/>form login · session cookie · CSRF tokens<br/>/settings/**, /applicants/** → SPECIALIST<br/>/submit/** → APPLICANT"]
+    api --> hdr["Headers on both: CSP (no inline script/style),<br/>X-Frame-Options DENY, HSTS, nosniff,<br/>Referrer-Policy strict-origin-when-cross-origin"]
+    web --> hdr
+    hdr --> ctl["Controllers"]
+    ctl --> svc["Services with @PreAuthorize<br/>(ReviewService, SettingsService, ApplicantService → SPECIALIST;<br/>SubmissionService, BatchSubmissionService → APPLICANT)"]
+    svc --> data["LabelQueryService data scoping:<br/>applicants see only their company's labels;<br/>others → 404 (existence not leaked)"]

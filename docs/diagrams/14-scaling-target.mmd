@@ -1,0 +1,23 @@
+%% Infrastructure — target asynchronous analysis flow for high volume
+sequenceDiagram
+    autonumber
+    actor A as Applicant
+    participant API as App instance
+    participant DB as PostgreSQL
+    participant OS as Object storage
+    participant Q as Work queue
+    participant W as Analysis worker
+    A->>API: POST label + images
+    API->>OS: store images
+    API->>DB: insert label (PROCESSING) + outbox event
+    API-->>A: 202 Accepted + labelId
+    DB-->>Q: outbox relay publishes AnalyzeLabel(labelId)
+    Q->>W: deliver (at-least-once)
+    W->>OS: load images
+    W->>W: OCR → compare → verdict (idempotent per labelId)
+    W->>DB: persist result, label → PENDING_REVIEW
+    alt repeated failure
+        Q->>Q: move to dead-letter queue, alert
+    end
+    A->>API: GET label (poll / server-sent events)
+    API-->>A: status + field results

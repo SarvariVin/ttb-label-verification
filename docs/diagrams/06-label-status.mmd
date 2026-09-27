@@ -1,0 +1,24 @@
+%% Label status state machine
+stateDiagram-v2
+    [*] --> PROCESSING: applicant submits
+    PROCESSING --> PENDING_REVIEW: pipeline done (AI proposal stored)
+    PROCESSING --> PENDING: pipeline failed / timed out
+    PROCESSING --> PENDING_REVIEW: stuck > 5 min (lazy recovery)
+    PENDING --> PROCESSING: specialist re-analyzes
+
+    PENDING_REVIEW --> APPROVED: batch approve / review / override
+    PENDING_REVIEW --> CONDITIONALLY_APPROVED: minor discrepancy (7-day window)
+    PENDING_REVIEW --> NEEDS_CORRECTION: substantive issue (30-day window)
+    PENDING_REVIEW --> REJECTED: health warning / illegal size
+
+    CONDITIONALLY_APPROVED --> NEEDS_CORRECTION: deadline passed (lazy)
+    NEEDS_CORRECTION --> REJECTED: deadline passed (lazy)
+
+    CONDITIONALLY_APPROVED --> APPROVED: specialist override
+    NEEDS_CORRECTION --> APPROVED: specialist override
+    REJECTED --> APPROVED: specialist override
+
+    note right of NEEDS_CORRECTION
+        Applicant corrects by submitting a new label
+        linked via prior_label_id
+    end note

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{fragments/layout :: head('New submission')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: topbar}"></header>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>New label submission</h1>
+      <p class="muted">Enter your COLA application data (TTB Form 5100.31) and upload the label images.
+        We compare the two automatically; a specialist makes the final decision.</p>
+    </div>
+  </div>
+
+  <div class="alert alert-bad" role="alert" th:if="${uploadError}" th:text="${uploadError}"></div>
+  <div class="alert alert-info" id="prefill-notice" hidden>
+    Fields highlighted below were read from your label. <strong>Check each one against your approved application
+    data</strong> and correct anything that differs — the verification compares your application with the label,
+    so values copied from the label alone prove nothing.
+  </div>
+
+  <form th:action="@{/submit}" th:object="${form}" method="post" enctype="multipart/form-data"
+        data-busy="Analyzing label…" th:attr="data-prefill-url=@{/submit/extract}" id="submission-form">
+    <input type="hidden" th:field="*{priorLabelId}">
+    <div class="alert alert-info" th:if="*{priorLabelId != null and priorLabelId != ''}">
+      This submission corrects a previous label (<span class="mono" th:text="*{priorLabelId}"></span>).
+    </div>
+
+    <fieldset>
+      <legend>Label images</legend>
+      <div class="field">
+        <label for="images">Images (front first; up to 6 · JPEG or PNG · 10 MB each)</label>
+        <input type="file" id="images" name="images" accept="image/jpeg,image/png,image/webp" multiple required>
+        <p class="hint">The label is read as soon as you choose images, and empty fields below are filled in.
+          JPEG or PNG; photos about 1000 px wide or larger read best.</p>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" id="prefill-button" disabled>Read label again</button>
+        <span id="prefill-status" class="small" role="status" aria-live="polite"></span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Product</legend>
+      <div class="form-grid">
+        <div class="field">
+          <label for="beverageType">Type of product *</label>
+          <select th:field="*{beverageType}" id="beverageType" required>
+            <option value="">Select…</option>
+            <option th:each="t : ${beverageTypes}" th:value="${t}" th:text="${t.label()}"></option>
+          </select>
+          <p class="error-text" th:if="${#fields.hasErrors('beverageType')}" th:errors="*{beverageType}"></p>
+        </div>
+        <div class="field">
+          <label for="containerSizeMl">Total bottle capacity (mL) *</label>
+          <input type="number" th:field="*{containerSizeMl}" id="containerSizeMl" min="1" required>
+          <p class="hint">Must be a legal standard of fill for spirits and wine.</p>
+          <p class="error-text" th:if="${#fields.hasErrors('containerSizeMl')}" th:errors="*{containerSizeMl}"></p>
+        </div>
+        <div class="field">
+          <label for="serialNumber">Serial number</label>
+          <input type="text" th:field="*{serialNumber}" id="serialNumber">
+        </div>
+        <div class="field">
+          <label for="classTypeCode">Class/type code</label>
+          <input type="text" th:field="*{classTypeCode}" id="classTypeCode" placeholder="e.g. 101">
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Label text</legend>
+      <div class="form-grid">
+        <div class="field">
+          <label for="brandName">Brand name *</label>
+          <input type="text" th:field="*{brandName}" id="brandName" required>
+          <p class="error-text" th:if="${#fields.hasErrors('brandName')}" th:errors="*{brandName}"></p>
+        </div>
+        <div class="field">
+          <label for="fancifulName">Fanciful name</label>
+          <input type="text" th:field="*{fancifulName}" id="fancifulName">
+        </div>
+        <div class="field">
+          <label for="classType">Class/type designation</label>
+          <input type="text" th:field="*{classType}" id="classType" placeholder="e.g. Kentucky Straight Bourbon Whiskey">
+        </div>
+        <div class="field">
+          <label for="alcoholContent">Alcohol content</label>
+          <input type="text" th:field="*{alcoholContent}" id="alcoholContent" placeholder="e.g. 45% Alc./Vol. (90 Proof)">
+        </div>
+        <div class="field">
+          <label for="netContents">Net contents</label>
+          <input type="text" th:field="*{netContents}" id="netContents" placeholder="e.g. 750 mL">
+        </div>
+        <div class="field">
+          <label for="qualifyingPhrase">Qualifying phrase</label>
+          <input type="text" th:field="*{qualifyingPhrase}" id="qualifyingPhrase" list="phrases" placeholder="e.g. Distilled and Bottled by">
+          <datalist id="phrases"><option th:each="p : ${qualifyingPhrases}" th:value="${p}"></option></datalist>
+        </div>
+        <div class="field">
+          <label for="nameAndAddress">Name and address</label>
+          <input type="text" th:field="*{nameAndAddress}" id="nameAndAddress">
+        </div>
+        <div class="field">
+          <label for="countryOfOrigin">Country of origin (imports)</label>
+          <input type="text" th:field="*{countryOfOrigin}" id="countryOfOrigin">
+        </div>
+      </div>
+      <p class="hint">The health warning is always verified against the statutory text of 27 CFR Part 16,
+        including the capitalized, bold “GOVERNMENT WARNING:” prefix. You do not need to enter it.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Wine / spirits details (if applicable)</legend>
+      <div class="form-grid">
+        <div class="field"><label for="grapeVarietal">Grape varietal</label><input type="text" th:field="*{grapeVarietal}" id="grapeVarietal"></div>
+        <div class="field"><label for="appellationOfOrigin">Appellation of origin</label><input type="text" th:field="*{appellationOfOrigin}" id="appellationOfOrigin"></div>
+        <div class="field"><label for="vintageYear">Vintage year</label><input type="text" th:field="*{vintageYear}" id="vintageYear"></div>
+        <div class="field"><label for="ageStatement">Age statement</label><input type="text" th:field="*{ageStatement}" id="ageStatement"></div>
+        <div class="field"><label for="stateOfDistillation">State of distillation</label><input type="text" th:field="*{stateOfDistillation}" id="stateOfDistillation"></div>
+        <div class="field"><label><input type="checkbox" th:field="*{sulfiteDeclaration}"> Contains sulfites declaration</label></div>
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Submit for verification</button>
+      <a class="btn" th:href="@{/}">Cancel</a>
+    </div>
+  </form>
+</main>
+</body>
+</html>

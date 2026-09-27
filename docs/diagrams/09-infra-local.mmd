@@ -1,0 +1,20 @@
+%% Infrastructure — developer workstation
+flowchart LR
+    dev(["Developer"]) --> browser["Browser<br/>localhost:8080"]
+    dev --> cli["curl / API client<br/>HTTP Basic"]
+    subgraph ws["Workstation (macOS / Linux)"]
+        jvm["JVM 21<br/>./mvnw spring-boot:run"]
+        tess["Tesseract 5<br/>libtesseract + eng.traineddata"]
+        h2[("H2 in-memory<br/>profile: demo")]
+        fs[("./data/uploads")]
+        subgraph compose["docker compose (optional)"]
+            pg[("PostgreSQL 17<br/>127.0.0.1:5432")]
+        end
+    end
+    browser --> jvm
+    cli --> jvm
+    jvm -- JNA --> tess
+    jvm -- "profile: demo" --> h2
+    jvm -- "default profile" --> pg
+    jvm --> fs
+    jvm -. "optional HTTPS" .-> ext["Google Vision / OpenAI"]

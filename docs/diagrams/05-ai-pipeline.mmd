@@ -1,0 +1,33 @@
+%% Extraction pipelines and field comparison
+flowchart TB
+    start(["Label images + expected fields"]) --> setting{"settings.submission_pipeline_model"}
+    setting -- "local (default)" --> L1
+    setting -- "cloud" --> C1
+
+    subgraph local["Local pipeline — free, on-host"]
+        L1["Tesseract OCR per image<br/>grayscale · upscale &lt;1024px to 2048px<br/>PSM 11 (sparse) + PSM 6 (block), merged lines"]
+        L2["OcrTextSearch per expected field<br/>1 exact, whole words/numbers →<br/>2 GOVERNMENT WARNING landmark + all 6 body phrases →<br/>3 space/punctuation-insensitive →<br/>4 sliding window (≥ .9 noise; .75–.9 label text) → 5 scattered words<br/>numeric fields keep the OCR text"]
+        L1 --> L2
+    end
+
+    subgraph cloud["Cloud pipeline — opt-in"]
+        C1["Stage 1: Google Vision TEXT_DETECTION<br/>parallel, word-level polygons"]
+        C2["Stage 2: OpenAI classification<br/>indexed word list + beverage-type prompt<br/>strict JSON schema → field, value, wordIndices"]
+        C3["Stage 3: BoundingBoxMath<br/>union of word boxes → normalized 0–1"]
+        C1 --> C2 --> C3
+    end
+
+    L2 --> R["ExtractionResult"]
+    C3 --> R
+    C1 -. "error" .-> L1
+    L1 -. "error, if cloud configured" .-> C1
+
+    R --> V{"Accepted variant?"}
+    V -- yes --> M["MATCH 95"]
+    V -- no --> FC["FieldComparator by strategy<br/>EXACT · FUZZY (Dice ≥ .8) · NORMALIZED (ABV, mL, years)<br/>CONTAINS · ENUM (qualifying phrases)"]
+    FC --> MI{"Mismatch on minor field?"}
+    MI -- yes --> NC["NEEDS_CORRECTION"]
+    MI -- no --> ST["MATCH / MISMATCH / NOT_FOUND"]
+    M --> SD
+    NC --> SD
+    ST --> SD["StatusDeterminer → AI-proposed status<br/>mean confidence → overall confidence"]

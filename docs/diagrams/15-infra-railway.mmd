@@ -1,0 +1,18 @@
+%% Infrastructure — Railway deployment (free or Hobby plan)
+flowchart LR
+    users(["Browser / API client"]) -->|"HTTPS"| edge["Railway edge<br/>TLS termination · *.up.railway.app"]
+    subgraph project["Railway project"]
+        subgraph appsvc["Service: app (Dockerfile)"]
+            app["Spring Boot · profile railway<br/>JVM heap 256 MB · Tesseract 1 job at a time<br/>images stored in PostgreSQL"]
+        end
+        subgraph dbsvc["Service: Postgres (template)"]
+            pg[("PostgreSQL")]
+            vol[("Volume (the plan's one volume)")]
+        end
+        vars["Variables<br/>DATABASE_URL = reference to Postgres<br/>APP_SEED_PASSWORD · SPRING_PROFILES_ACTIVE"]
+    end
+    edge -->|"X-Forwarded-Proto: https<br/>PORT injected"| app
+    app -->|"private network :5432"| pg
+    pg --- vol
+    vars -. injected .-> app
+    app -. "optional HTTPS" .-> ai["Google Vision / OpenAI"]

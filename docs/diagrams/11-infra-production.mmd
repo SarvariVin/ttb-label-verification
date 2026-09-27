@@ -1,0 +1,38 @@
+%% Infrastructure — production reference topology (cloud-neutral)
+flowchart TB
+    users(["Specialists (agency network / VPN)"]) --> waf
+    apps(["Applicants (internet)"]) --> waf
+    idp["Agency identity provider<br/>SAML / OIDC (PIV/CAC, MFA)"]
+
+    subgraph edge["Edge zone"]
+        waf["WAF + DDoS protection"] --> lb["Load balancer<br/>TLS 1.2+ termination"]
+    end
+
+    subgraph appzone["Application zone (private subnets, 2+ availability zones)"]
+        a1["App instance A"]
+        a2["App instance B"]
+        w1["Analysis workers<br/>(Tesseract, CPU-sized)"]
+        q[("Work queue<br/>+ dead-letter queue")]
+    end
+
+    subgraph datazone["Data zone (no internet route)"]
+        db[("Managed PostgreSQL<br/>multi-AZ · PITR · encrypted")]
+        obj[("Object storage<br/>SSE · versioning · lifecycle")]
+        sess[("Session store<br/>Redis / JDBC")]
+    end
+
+    subgraph shared["Shared services"]
+        sm["Secrets manager"]
+        obs["Logs · metrics · traces · alerts"]
+        egress["Egress proxy / allow-list"]
+    end
+
+    lb --> a1 & a2
+    a1 & a2 -. OIDC .-> idp
+    a1 & a2 --> q --> w1
+    a1 & a2 & w1 --> db
+    a1 & a2 & w1 --> obj
+    a1 & a2 --> sess
+    a1 & a2 & w1 -. read secrets .-> sm
+    a1 & a2 & w1 -. telemetry .-> obs
+    w1 -. "optional cloud AI (authorized services only)" .-> egress --> ai["OCR / LLM endpoints"]

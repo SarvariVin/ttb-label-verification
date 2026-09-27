@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head th:fragment="head(title)">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title th:text="${title} + ' · ' + ${appName}">Label Verification</title>
+  <link rel="icon" th:href="@{/favicon.svg}" type="image/svg+xml">
+  <link rel="stylesheet" th:href="@{/css/app.css}">
+  <script th:src="@{/js/app.js}" defer></script>
+</head>
+<body>
+
+<header th:fragment="topbar" class="topbar">
+  <a class="brand" th:href="@{/}">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 4 7v8c0 7.2 5.1 13.4 12 15 6.9-1.6 12-7.8 12-15V7L16 2z" fill="currentColor"/><path d="m11 16 3.5 3.5L21.5 12" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span th:text="${appName}">Label Verification</span>
+  </a>
+  <nav class="nav" aria-label="Main">
+    <a th:href="@{/}">Dashboard</a>
+    <th:block sec:authorize="hasRole('APPLICANT')">
+      <a th:href="@{/submit}">New submission</a>
+      <a th:href="@{/submit/batch}">Batch upload</a>
+    </th:block>
+    <th:block sec:authorize="hasRole('SPECIALIST')">
+      <a th:href="@{/applicants}">Applicants</a>
+      <a th:href="@{/settings}">Settings</a>
+    </th:block>
+  </nav>
+  <div class="user" th:if="${currentUser != null}">
+    <span><span th:text="${currentUser.name}">Name</span> · <span th:text="${#strings.capitalize(#strings.toLowerCase(currentUser.role.name()))}">Role</span></span>
+    <form th:action="@{/logout}" method="post"><button class="btn btn-link" type="submit">Sign out</button></form>
+  </div>
+</header>
+
+<th:block th:fragment="flash">
+  <div class="alert alert-ok" role="status" th:if="${flash}" th:text="${flash}"></div>
+  <div class="alert alert-bad" role="alert" th:if="${flashError}" th:text="${flashError}"></div>
+</th:block>
+
+</body>
+</html>

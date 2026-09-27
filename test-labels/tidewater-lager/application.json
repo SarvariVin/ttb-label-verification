@@ -1,0 +1,11 @@
+{
+  "beverageType": "MALT_BEVERAGE",
+  "containerSizeMl": 355,
+  "brandName": "Tidewater Row",
+  "fancifulName": "Harbor Lager",
+  "classType": "Lager",
+  "alcoholContent": "5.0% Alc./Vol.",
+  "netContents": "12 FL OZ",
+  "qualifyingPhrase": "Brewed and Packaged by",
+  "nameAndAddress": "Tidewater Row Brewing Co., Portland, Maine"
+}

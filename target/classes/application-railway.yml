@@ -1,0 +1,31 @@
+# Profile for Railway (or any small PaaS container behind a TLS-terminating proxy).
+# Activate with SPRING_PROFILES_ACTIVE=railway. Tuned for a 512 MB free-plan service.
+server:
+  # Railway terminates TLS; trust X-Forwarded-* so redirects and URLs stay on https.
+  forward-headers-strategy: framework
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:20}
+    accept-count: 50
+  servlet:
+    session:
+      cookie:
+        secure: true
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:4}
+      minimum-idle: 1
+  jpa:
+    properties:
+      hibernate:
+        query.plan_cache_max_size: 256
+
+app:
+  storage:
+    # One volume per project on the free plan: PostgreSQL gets it, images live in the database.
+    type: ${APP_STORAGE_TYPE:database}
+  ocr:
+    # One OCR job at a time keeps peak memory inside 512 MB.
+    max-concurrent: ${OCR_MAX_CONCURRENT:1}

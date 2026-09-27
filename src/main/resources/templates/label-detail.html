@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security" lang="en">
+<head th:replace="~{fragments/layout :: head(${d.applicationData.brandName})}"></head>
+<body th:with="specialist=${currentUser.specialist},
+               reviewable=${d.effectiveStatus.name() == 'PENDING_REVIEW' or d.effectiveStatus.name() == 'NEEDS_CORRECTION'
+                            or d.effectiveStatus.name() == 'CONDITIONALLY_APPROVED'}">
+<header th:replace="~{fragments/layout :: topbar}"></header>
+<main>
+  <div class="page-header">
+    <div>
+      <p class="small muted"><a th:href="@{/}">← Dashboard</a></p>
+      <h1 th:text="${d.applicationData.brandName}">Brand</h1>
+      <p class="muted">
+        <span th:text="${d.label.beverageType.label()}">Type</span> ·
+        <span th:text="${d.label.containerSizeMl} + ' mL'">750 mL</span> ·
+        <span th:text="${d.label.applicant != null} ? ${d.label.applicant.companyName} : '—'">Applicant</span> ·
+        submitted <span th:text="${@fmt.dateTime(d.label.createdAt)}"></span>
+      </p>
+    </div>
+    <div class="actions">
+      <span class="badge" th:classappend="'badge-' + ${@fmt.css(d.effectiveStatus)}" th:text="${@fmt.humanize(d.effectiveStatus)}">Status</span>
+      <span class="badge" th:if="${d.deadline}" th:classappend="'badge-' + ${@fmt.css(d.deadline.urgency)}" th:text="${@fmt.deadline(d.deadline)}"></span>
+      <a class="btn" sec:authorize="hasRole('APPLICANT')"
+         th:if="${d.effectiveStatus.name() == 'NEEDS_CORRECTION' or d.effectiveStatus.name() == 'CONDITIONALLY_APPROVED'}"
+         th:href="@{/submit(priorLabelId=${d.label.id})}">Submit correction</a>
+    </div>
+  </div>
+  <th:block th:replace="~{fragments/layout :: flash}"></th:block>
+
+  <div class="alert alert-info" th:if="${specialist and d.label.aiProposedStatus != null and d.effectiveStatus.name() == 'PENDING_REVIEW'}">
+    AI recommendation: <strong th:text="${@fmt.humanize(d.label.aiProposedStatus)}"></strong>
+    at <strong th:text="${d.label.overallConfidence} + '%'"></strong> overall confidence
+    <span th:if="${d.readyToApprove}">— every field matches; safe to approve.</span>
+  </div>
+  <div class="alert alert-info" th:if="${d.effectiveStatus.name() == 'PENDING'}">
+    Automatic analysis did not complete for this label. <span th:if="${specialist}">Use “Re-analyze” to retry.</span>
+  </div>
+
+  <div class="split">
+    <!-- Images with bounding-box overlays -->
+    <section class="image-stack" aria-label="Label images">
+      <figure class="label-image" th:each="img : ${d.images}">
+        <div class="img-wrap">
+          <img th:src="@{/images/{id}(id=${img.id})}" th:alt="${@fmt.humanize(img.imageType)} + ' label image'">
+          <svg class="overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+            <rect th:each="i : ${d.items}" th:if="${i.hasBoundingBox() and i.labelImageId == img.id}"
+                  th:id="'bbox-' + ${i.id}" th:class="'bbox-' + ${@fmt.css(i.status)}"
+                  th:attr="x=${i.bboxX},y=${i.bboxY},width=${i.bboxWidth},height=${i.bboxHeight}"></rect>
+          </svg>
+        </div>
+        <figcaption class="image-caption">
+          <span th:text="${@fmt.humanize(img.imageType)}">Front</span>
+          <span th:text="${img.imageFilename}">file.png</span>
+        </figcaption>
+      </figure>
+      <p class="small muted" th:if="${d.currentResult != null}">
+        Analyzed by <span class="mono" th:text="${d.currentResult.modelUsed}"></span>
+        in <span th:text="${d.currentResult.processingTimeMs} + ' ms'"></span>.
+        <span th:if="${d.currentResult.modelUsed == 'tesseract-local'}">Bounding boxes require the cloud pipeline.</span>
+      </p>
+    </section>
+
+    <!-- Field comparison + review -->
+    <section>
+      <form class="card" th:action="@{/labels/{id}/review(id=${d.label.id})}" method="post">
+        <h2>Field comparison</h2>
+        <div class="empty" th:if="${#lists.isEmpty(d.items)}">No analysis results yet.</div>
+        <div class="table-wrap" th:unless="${#lists.isEmpty(d.items)}">
+          <table>
+            <tbody>
+            <tr class="field-row" th:each="i : ${d.items}" th:attr="data-field-item=${i.id}">
+              <td>
+                <strong th:text="${i.fieldName.displayName()}">Field</strong>
+                <div><span class="badge" th:classappend="'badge-' + ${@fmt.css(i.status)}" th:text="${@fmt.humanize(i.status)}"></span></div>
+                <div class="small" th:if="${specialist}"><meter min="0" max="100" th:value="${i.confidence}"></meter>
+                  <span th:text="${#numbers.formatDecimal(i.confidence, 1, 0)} + '%'"></span></div>
+              </td>
+              <td>
+                <div class="field-values">
+                  <span class="k">Application</span><span class="v" th:text="${i.expectedValue}"></span>
+                  <span class="k">Label</span><span class="v" th:text="${#strings.isEmpty(i.extractedValue)} ? '(not found)' : ${i.extractedValue}"></span>
+                </div>
+                <div class="reasoning" th:if="${specialist}" th:text="${i.matchReasoning}"></div>
+              </td>
+              <td th:if="${specialist and reviewable}">
+                <div class="review-controls">
+                  <label class="small" th:for="'resolved_' + ${i.id}">Resolve as</label>
+                  <select th:id="'resolved_' + ${i.id}" th:name="'resolved_' + ${i.id}">
+                    <option value="">Keep</option>
+                    <option th:each="r : ${resolutions}" th:value="${r}" th:text="${@fmt.humanize(r)}"></option>
+                  </select>
+                  <input type="text" th:name="'notes_' + ${i.id}" placeholder="Note (optional)" th:attr="aria-label='Note for ' + ${i.fieldName.displayName()}">
+                </div>
+              </td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="actions" th:if="${specialist and reviewable and not #lists.isEmpty(d.items)}">
+          <button class="btn btn-primary" type="submit">Save review &amp; derive status</button>
+          <span class="small muted">Status is re-derived from the resolved field results.</span>
+        </div>
+      </form>
+
+      <div class="grid grid-2" th:if="${specialist}">
+        <form class="card" th:action="@{/labels/{id}/override(id=${d.label.id})}" method="post"
+              th:unless="${d.effectiveStatus.name() == 'PENDING' or d.effectiveStatus.name() == 'PROCESSING'}">
+          <h3>Set final status</h3>
+          <div class="field">
+            <label for="newStatus">Decision</label>
+            <select id="newStatus" name="newStatus" required>
+              <option th:each="s : ${decisions}" th:value="${s}" th:text="${@fmt.humanize(s)}"
+                      th:selected="${s == d.label.aiProposedStatus}"></option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="justification">Justification</label>
+            <textarea id="justification" name="justification" minlength="10" required
+                      placeholder="At least 10 characters — recorded in the audit trail"></textarea>
+          </div>
+          <input type="hidden" name="reasonCode" value="specialist_decision">
+          <button class="btn btn-primary" type="submit">Apply</button>
+        </form>
+
+        <div class="card">
+          <h3>Re-analyze</h3>
+          <p class="small muted">Runs the pipeline again with current settings. The previous result is kept in history.</p>
+          <form th:action="@{/labels/{id}/reanalyze(id=${d.label.id})}" method="post" data-busy="Analyzing…"
+                th:unless="${d.effectiveStatus.name() == 'PROCESSING'}">
+            <button class="btn" type="submit">Re-analyze</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Application data</h3>
+        <dl class="kv">
+          <dt>Serial number</dt><dd th:text="${d.applicationData.serialNumber ?: '—'}"></dd>
+          <dt>Class/type code</dt><dd th:text="${d.applicationData.classTypeCode ?: '—'}"></dd>
+          <dt>Container</dt><dd th:text="${d.label.containerSizeMl} + ' mL'"></dd>
+          <dt th:if="${d.label.priorLabelId}">Corrects</dt>
+          <dd th:if="${d.label.priorLabelId}"><a th:href="@{/labels/{id}(id=${d.label.priorLabelId})}" class="mono" th:text="${d.label.priorLabelId}"></a></dd>
+        </dl>
+      </div>
+
+      <div class="card" th:if="${not #lists.isEmpty(d.overrides) or not #lists.isEmpty(d.reviews)}">
+        <h3>Decision history</h3>
+        <ul class="timeline">
+          <li th:each="o : ${d.overrides}">
+            <span class="badge" th:classappend="'badge-' + ${@fmt.css(o.newStatus)}" th:text="${@fmt.humanize(o.newStatus)}"></span>
+            <span class="small muted">from <span th:text="${@fmt.humanize(o.previousStatus)}"></span>
+              by <span th:text="${o.specialist.name}"></span> · <span th:text="${@fmt.dateTime(o.createdAt)}"></span></span>
+            <div class="small" th:text="${o.justification}"></div>
+          </li>
+          <li th:each="r : ${d.reviews}">
+            <span class="small"><strong th:text="${r.validationItem.fieldName.displayName()}"></strong>:
+              <span th:text="${@fmt.humanize(r.originalStatus)}"></span> → <span th:text="${@fmt.humanize(r.resolvedStatus)}"></span></span>
+            <span class="small muted">by <span th:text="${r.specialist.name}"></span> · <span th:text="${@fmt.dateTime(r.reviewedAt)}"></span></span>
+            <div class="small" th:if="${r.reviewerNotes}" th:text="${r.reviewerNotes}"></div>
+          </li>
+        </ul>
+      </div>
+
+      <div class="card" th:if="${specialist and #lists.size(d.resultHistory) > 1}">
+        <h3>Analysis runs</h3>
+        <ul class="timeline">
+          <li th:each="r : ${d.resultHistory}" class="small">
+            <span class="mono" th:text="${r.modelUsed}"></span> · <span th:text="${r.processingTimeMs} + ' ms'"></span>
+            · <span th:text="${@fmt.dateTime(r.createdAt)}"></span>
+            <span class="badge badge-approved" th:if="${r.current}">current</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

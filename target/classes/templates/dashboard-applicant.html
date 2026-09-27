@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{fragments/layout :: head('My submissions')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: topbar}"></header>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>My submissions</h1>
+      <p class="muted">Every label is checked automatically, then confirmed by a TTB specialist.</p>
+    </div>
+    <div class="actions">
+      <a class="btn" th:href="@{/submit/batch}">Batch upload</a>
+      <a class="btn btn-primary" th:href="@{/submit}">New submission</a>
+    </div>
+  </div>
+  <th:block th:replace="~{fragments/layout :: flash}"></th:block>
+
+  <div class="card">
+    <div class="empty" th:if="${#lists.isEmpty(submissions)}">
+      You have not submitted any labels yet. <a th:href="@{/submit}">Submit your first label</a>.
+    </div>
+    <div class="table-wrap" th:unless="${#lists.isEmpty(submissions)}">
+      <table>
+        <thead><tr><th>Brand</th><th>Type</th><th>Status</th><th>Correction deadline</th><th>Submitted</th></tr></thead>
+        <tbody>
+        <tr th:each="s : ${submissions}">
+          <td><a th:href="@{/labels/{id}(id=${s.id})}" th:text="${s.brandName}">Brand</a>
+            <div class="small muted" th:if="${s.fancifulName}" th:text="${s.fancifulName}"></div></td>
+          <td th:text="${s.beverageType.label()}">Type</td>
+          <td><span class="badge" th:classappend="'badge-' + ${@fmt.css(s.status)}" th:text="${@fmt.humanize(s.status)}">Status</span></td>
+          <td><span th:if="${s.deadline}" class="badge" th:classappend="'badge-' + ${@fmt.css(s.deadline.urgency)}" th:text="${@fmt.deadline(s.deadline)}"></span></td>
+          <td class="small" th:text="${@fmt.dateTime(s.createdAt)}">date</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,109 @@
+%% Entity-relationship diagram (Flyway V1__init_schema.sql)
+erDiagram
+    APPLICANTS ||--o{ USERS : "applicant users"
+    APPLICANTS ||--o{ LABELS : submits
+    USERS ||--o{ LABELS : "decided by (specialist_id)"
+    LABELS ||--o| LABELS : "prior_label_id (correction chain)"
+    LABELS ||--|| APPLICATION_DATA : "Form 5100.31"
+    LABELS ||--o{ LABEL_IMAGES : has
+    LABELS ||--o{ VALIDATION_RESULTS : "analysis runs"
+    VALIDATION_RESULTS ||--o| VALIDATION_RESULTS : superseded_by
+    VALIDATION_RESULTS ||--o{ VALIDATION_ITEMS : "per field"
+    LABEL_IMAGES ||--o{ VALIDATION_ITEMS : "found on"
+    VALIDATION_ITEMS ||--o{ HUMAN_REVIEWS : "field overrides"
+    USERS ||--o{ HUMAN_REVIEWS : writes
+    LABELS ||--o{ STATUS_OVERRIDES : "status audit"
+    USERS ||--o{ STATUS_OVERRIDES : writes
+
+    USERS {
+        varchar id PK
+        varchar email UK
+        varchar password_hash "bcrypt ({bcrypt} prefix)"
+        varchar role "SPECIALIST | APPLICANT"
+        varchar applicant_id FK
+    }
+    APPLICANTS {
+        varchar id PK
+        varchar company_name
+        varchar contact_email
+        text notes
+    }
+    LABELS {
+        varchar id PK
+        varchar applicant_id FK
+        varchar specialist_id FK
+        varchar prior_label_id FK
+        varchar beverage_type
+        int container_size_ml
+        varchar status
+        varchar ai_proposed_status
+        numeric overall_confidence
+        timestamptz correction_deadline
+        boolean deadline_expired
+    }
+    APPLICATION_DATA {
+        varchar id PK
+        varchar label_id FK "unique"
+        text brand_name
+        text class_type
+        text alcohol_content
+        text net_contents
+        text health_warning
+        text name_and_address
+        text qualifying_phrase
+        text wine_spirits_fields "varietal, appellation, vintage, age, state…"
+    }
+    LABEL_IMAGES {
+        varchar id PK
+        varchar label_id FK
+        varchar storage_key
+        varchar content_type
+        varchar image_type "FRONT|BACK|NECK|STRIP|OTHER"
+        int sort_order
+    }
+    VALIDATION_RESULTS {
+        varchar id PK
+        varchar label_id FK
+        varchar superseded_by FK
+        boolean is_current
+        text ai_raw_response "JSON"
+        bigint processing_time_ms
+        varchar model_used
+    }
+    VALIDATION_ITEMS {
+        varchar id PK
+        varchar validation_result_id FK
+        varchar label_image_id FK
+        varchar field_name
+        text expected_value
+        text extracted_value
+        varchar status "MATCH|MISMATCH|NOT_FOUND|NEEDS_CORRECTION"
+        numeric confidence
+        numeric bbox_x_y_w_h "normalized 0-1"
+    }
+    HUMAN_REVIEWS {
+        varchar id PK
+        varchar validation_item_id FK
+        varchar original_status
+        varchar resolved_status
+        text reviewer_notes
+    }
+    STATUS_OVERRIDES {
+        varchar id PK
+        varchar label_id FK
+        varchar previous_status
+        varchar new_status
+        text justification
+        varchar reason_code
+    }
+    SETTINGS {
+        varchar id PK
+        varchar setting_key UK
+        text setting_value "JSON"
+    }
+    ACCEPTED_VARIANTS {
+        varchar id PK
+        varchar field_name
+        text canonical_value
+        text variant_value
+    }

@@ -1,0 +1,5 @@
+beverage_type,container_size_ml,brand_name,images,fanciful_name,class_type,alcohol_content,net_contents,qualifying_phrase,name_and_address,appellation_of_origin,age_statement
+distilled_spirits,750,Aldercrest,aldercrest-bourbon.png,Small Batch,Kentucky Straight Bourbon Whiskey,45% Alc./Vol.,750 mL,Distilled and Bottled by,"Aldercrest Distilling Co., Bardstown, Kentucky",,Aged 6 Years
+malt_beverage,355,Tidewater Row,tidewater-lager.png,Harbor Lager,Lager,5.0% Alc./Vol.,12 FL OZ,Brewed and Packaged by,"Tidewater Row Brewing Co., Portland, Maine",,
+wine,750,Quillmoor Cellars,quillmoor-chardonnay.png,,Chardonnay,13.5% Alc. by Vol.,750 mL,Produced and Bottled by,"Quillmoor Cellars, Healdsburg, California",Sonoma Coast,
+distilled_spirits,750,Northvale,northvale-vodka-flawed.png,,Vodka,42% Alc./Vol.,750 mL,Bottled by,"Northvale Spirits, Duluth, Minnesota",,

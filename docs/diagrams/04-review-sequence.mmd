@@ -1,0 +1,31 @@
+%% Specialist review paths
+sequenceDiagram
+    autonumber
+    actor SP as Specialist
+    participant UI as Dashboard / Label page
+    participant R as ReviewService
+    participant DB as Database
+
+    SP->>UI: Open dashboard
+    UI->>DB: queues (effective status computed & persisted lazily)
+    UI-->>SP: Ready to approve | Needs review | All
+
+    alt Batch approve (Ready to approve tab)
+        SP->>R: batchApprove(ids ≤ 100)
+        loop each label — own transaction
+            R->>DB: re-check PENDING_REVIEW, confidence ≥ threshold, all items MATCH
+            R->>DB: insert status_override (audit) + label → APPROVED
+        end
+        R-->>SP: approvedCount, failedIds
+    else Field-level review
+        SP->>R: submitReview(labelId, [itemId → MATCH|MISMATCH|NOT_FOUND, note])
+        R->>DB: insert human_review per changed field (original status read from DB)
+        R->>R: StatusDeterminer over resolved items
+        R->>DB: label → derived status + correction deadline (7 / 30 days)
+    else Label-level override
+        SP->>R: overrideStatus(labelId, decision, justification ≥ 10 chars)
+        R->>DB: insert status_override + label → decision
+    else Re-analyze
+        SP->>R: reanalyze(labelId)
+        R->>DB: supersede current validation_result, insert new one
+    end

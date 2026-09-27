@@ -1,0 +1,16 @@
+# Zero-dependency profile: in-memory H2 in PostgreSQL compatibility mode.
+# Run with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
+spring:
+  datasource:
+    url: jdbc:h2:mem:labelverification;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: false
+  thymeleaf:
+    cache: false
+
+app:
+  storage:
+    directory: ./data/demo-uploads

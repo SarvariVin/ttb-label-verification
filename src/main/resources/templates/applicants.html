@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{fragments/layout :: head('Applicants')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: topbar}"></header>
+<main>
+  <div class="page-header"><div><h1>Applicants</h1><p class="muted">Companies submitting labels.</p></div></div>
+  <th:block th:replace="~{fragments/layout :: flash}"></th:block>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Company</th><th>Contact</th><th>Labels</th><th>Specialist notes</th></tr></thead>
+        <tbody>
+        <tr th:each="r : ${rows}">
+          <td><strong th:text="${r.applicant.companyName}"></strong></td>
+          <td class="small"><div th:text="${r.applicant.contactName}"></div><div class="muted" th:text="${r.applicant.contactEmail}"></div></td>
+          <td class="num" th:text="${r.labelCount}"></td>
+          <td>
+            <form th:action="@{/applicants/{id}/notes(id=${r.applicant.id})}" method="post" class="actions">
+              <input type="text" name="notes" th:value="${r.applicant.notes}" th:attr="aria-label='Notes for ' + ${r.applicant.companyName}">
+              <button class="btn" type="submit">Save</button>
+            </form>
+          </td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+</body>
+</html>

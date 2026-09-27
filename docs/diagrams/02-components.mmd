@@ -1,0 +1,54 @@
+%% Component view — packages under gov.ttb.labelverification and their dependencies
+flowchart TB
+    subgraph web["web"]
+        pages["page.*<br/>DashboardController · SubmitController<br/>LabelPageController · SettingsController<br/>ApplicantsController · LoginController"]
+        api["api.*<br/>LabelApiController · SettingsApiController<br/>DTOs · ApiExceptionHandler (RFC 9457)"]
+    end
+
+    subgraph security["security + config"]
+        sec["SecurityConfig<br/>API chain: stateless Basic<br/>Web chain: form login + CSRF + CSP"]
+        seed["DataSeeder · AppProperties · ClockConfig"]
+    end
+
+    subgraph service["service"]
+        sub["SubmissionService<br/>BatchSubmissionService"]
+        rev["ReviewService<br/>(review · override · batch approve · re-analyze)"]
+        qry["LabelQueryService · SlaMetricsService<br/>ApplicantService · SettingsService"]
+        ana["LabelAnalysisService<br/>(shared verification pipeline)"]
+        ext["ExtractionService<br/>(pipeline choice · fallback · timeout)"]
+    end
+
+    subgraph ai["ai"]
+        local["local.LocalExtractionPipeline<br/>ocr.TesseractOcrEngine"]
+        cloud["cloud.CloudExtractionPipeline<br/>ocr.GoogleVisionOcrEngine<br/>OpenAiFieldClassifier · BoundingBoxMath"]
+        cmp["compare.FieldComparator<br/>compare.OcrTextSearch · TextNormalizer"]
+    end
+
+    subgraph rules["labels + regulatory (pure, no Spring)"]
+        lbl["StatusDeterminer · EffectiveStatus<br/>Deadlines · ExpectedFields · SlaStatus"]
+        reg["BeverageType · FieldName · HealthWarning<br/>QualifyingPhrases · RegulatoryConstants"]
+    end
+
+    subgraph data["domain + repository + storage"]
+        repo["JPA entities & Spring Data repositories"]
+        store["ImageStorage (LocalImageStorage)<br/>ImageFileValidator (magic bytes)"]
+    end
+
+    pages --> service
+    api --> service
+    sec -. guards .-> web
+    sec -. "@PreAuthorize" .-> service
+    sub --> ana
+    rev --> ana
+    ana --> ext
+    ext --> local
+    ext --> cloud
+    local --> cmp
+    ana --> cmp
+    ana --> lbl
+    rev --> lbl
+    qry --> lbl
+    cmp --> reg
+    lbl --> reg
+    service --> repo
+    service --> store

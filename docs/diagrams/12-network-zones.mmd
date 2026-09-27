@@ -1,0 +1,25 @@
+%% Infrastructure — network zones and allowed flows (deny by default)
+flowchart LR
+    internet(["Internet"]) -->|"443 only"| edge
+    subgraph edge["Edge zone"]
+        waf["WAF / LB"]
+    end
+    subgraph app["Application zone"]
+        svc["App + workers"]
+    end
+    subgraph data["Data zone"]
+        db[("PostgreSQL :5432")]
+        obj[("Object storage (private endpoint)")]
+    end
+    subgraph mgmt["Management zone"]
+        bastion["Session manager / bastion<br/>(no SSH from internet)"]
+        ci["CI/CD deploy role"]
+    end
+    edge -->|"8080 health-checked"| app
+    app -->|"5432 TLS"| db
+    app -->|"HTTPS private endpoint"| obj
+    app -->|"443 via egress proxy<br/>allow-listed hosts only"| out(["External AI APIs"])
+    mgmt -->|"admin, audited"| app
+    mgmt -->|"migrations"| db
+    internet -. "blocked" .-x data
+    internet -. "blocked" .-x app
