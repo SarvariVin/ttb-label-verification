@@ -1,0 +1,7 @@
+target/
+data/
+test-labels/
+docs/
+.git/
+.DS_Store
+**/.DS_Store
