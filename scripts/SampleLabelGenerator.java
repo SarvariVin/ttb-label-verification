@@ -96,6 +96,12 @@ public class SampleLabelGenerator {
         return m;
     }
 
+    /**
+     * Label design (v2): a single rounded frame with corner ornaments, an accent band at the top,
+     * a sans-serif brand, a diamond divider, ABV and net contents on two tinted pills, and the
+     * health warning in its own ruled panel. Only the regulated text is drawn as text, so OCR
+     * and pre-fill see exactly the same words as before.
+     */
     static BufferedImage render(Spec s) {
         int w = 1600, h = 2000, margin = 110;
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
@@ -104,43 +110,85 @@ public class SampleLabelGenerator {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setColor(s.bg());
         g.fillRect(0, 0, w, h);
-        g.setColor(s.ink());
-        g.setStroke(new BasicStroke(8));
-        g.drawRect(40, 40, w - 80, h - 80);
-        g.setStroke(new BasicStroke(2));
-        g.drawRect(60, 60, w - 120, h - 120);
 
-        int y = 330;
-        y = centered(g, s.brand(), new Font("Serif", Font.BOLD, 150), w, y);
-        if (s.fanciful() != null) {
-            y = centered(g, s.fanciful(), new Font("Serif", Font.ITALIC, 80), w, y + 60);
+        // Frame: one rounded border with a diamond ornament in each corner.
+        Color accent = blend(s.ink(), s.bg(), 0.35);
+        g.setColor(s.ink());
+        g.setStroke(new BasicStroke(6));
+        g.drawRoundRect(50, 50, w - 100, h - 100, 60, 60);
+        for (int[] c : new int[][]{{50, 50}, {w - 50, 50}, {50, h - 50}, {w - 50, h - 50}}) {
+            diamond(g, c[0], c[1], 22, s.ink());
         }
-        g.drawLine(margin * 3, y + 50, w - margin * 3, y + 50);
-        y = centered(g, s.classType(), new Font("SansSerif", Font.BOLD, 70), w, y + 170);
+
+        // Accent band across the top (decoration only, no text).
+        g.setColor(accent);
+        g.fillRoundRect(110, 110, w - 220, 36, 36, 36);
+
+        g.setColor(s.ink());
+        int y = 380;
+        y = centered(g, s.brand(), new Font("SansSerif", Font.BOLD, 140), w, y);
+        if (s.fanciful() != null) {
+            y = centered(g, s.fanciful(), new Font("Serif", Font.ITALIC, 78), w, y + 100);
+        }
+
+        // Divider: two rules with a diamond between them.
+        int dy = y + 70;
+        g.setStroke(new BasicStroke(3));
+        g.drawLine(margin * 3, dy, w / 2 - 40, dy);
+        g.drawLine(w / 2 + 40, dy, w - margin * 3, dy);
+        diamond(g, w / 2, dy, 16, s.ink());
+
+        y = centered(g, s.classType(), new Font("SansSerif", Font.BOLD, 70), w, dy + 150);
         if (s.extraLine() != null) {
             y = centered(g, s.extraLine(), new Font("SansSerif", Font.PLAIN, 56), w, y + 90);
         }
-        y = centered(g, s.abv() + "     " + s.net(), new Font("SansSerif", Font.BOLD, 64), w, y + 160);
-        y = centered(g, s.phrase(), new Font("SansSerif", Font.PLAIN, 50), w, y + 150);
+
+        // ABV and net contents in two pill boxes on one baseline.
+        Font pillFont = new Font("SansSerif", Font.BOLD, 60);
+        g.setFont(pillFont);
+        FontMetrics pm = g.getFontMetrics();
+        int gap = 60, padX = 44, pillH = pm.getHeight() + 36;
+        int aw = pm.stringWidth(s.abv()) + 2 * padX, nw = pm.stringWidth(s.net()) + 2 * padX;
+        int px = (w - (aw + gap + nw)) / 2, baseline = y + 190;
+        int top = baseline - pm.getAscent() - 18;
+        // Soft tint, no outline: a dark border around text makes Tesseract's layout analysis skip it.
+        g.setColor(blend(s.ink(), s.bg(), 0.10));
+        g.fillRoundRect(px, top, aw, pillH, pillH, pillH);
+        g.fillRoundRect(px + aw + gap, top, nw, pillH, pillH, pillH);
+        g.setColor(s.ink());
+        g.drawString(s.abv(), px + padX, baseline);
+        g.drawString(s.net(), px + aw + gap + padX, baseline);
+        y = baseline;
+
+        y = centered(g, s.phrase(), new Font("SansSerif", Font.PLAIN, 50), w, y + 170);
         y = centered(g, s.address(), new Font("SansSerif", Font.PLAIN, 50), w, y + 70);
 
-        // Health warning block: bold prefix (required), regular body, wrapped.
+        // Health warning in a ruled panel: bold prefix (required), regular body, wrapped.
         Font body = new Font("SansSerif", Font.PLAIN, 40);
         g.setFont(body);
         FontMetrics fm = g.getFontMetrics();
-        int x = margin + 40, maxWidth = w - 2 * (margin + 40);
-        int wy = h - 480;
+        int x = margin + 50, maxWidth = w - 2 * (margin + 50);
+        List<String> lines = wrap(s.warning(), fm, maxWidth);
+        int panelH = lines.size() * (fm.getHeight() + 4) + 70;
+        int panelTop = h - 170 - panelH;
+        g.setColor(blend(s.ink(), s.bg(), 0.08));
+        g.fillRoundRect(margin, panelTop, w - 2 * margin, panelH, 28, 28);
+        g.setColor(s.ink());
+        g.setStroke(new BasicStroke(2));
+        g.drawRoundRect(margin, panelTop, w - 2 * margin, panelH, 28, 28);
+
+        int wy = panelTop + 35 + fm.getAscent();
         String prefix = s.warning().substring(0, s.warning().indexOf(':') + 1);
         boolean first = true;
-        for (String line : wrap(s.warning(), fm, maxWidth)) {
+        for (String line : lines) {
             if (first && line.startsWith(prefix)) {
                 // The "GOVERNMENT WARNING:" prefix must be bold (27 CFR 16.22); the body must not be.
                 Font bold = body.deriveFont(Font.BOLD);
                 g.setFont(bold);
                 g.drawString(prefix, x, wy);
-                int px = x + g.getFontMetrics().stringWidth(prefix);
+                int bx = x + g.getFontMetrics().stringWidth(prefix);
                 g.setFont(body);
-                g.drawString(line.substring(prefix.length()), px, wy);
+                g.drawString(line.substring(prefix.length()), bx, wy);
             } else {
                 g.drawString(line, x, wy);
             }
@@ -149,6 +197,19 @@ public class SampleLabelGenerator {
         }
         g.dispose();
         return img;
+    }
+
+    /** A filled diamond centred on (cx, cy). */
+    static void diamond(Graphics2D g, int cx, int cy, int r, Color color) {
+        g.setColor(color);
+        g.fillPolygon(new int[]{cx, cx + r, cx, cx - r}, new int[]{cy - r, cy, cy + r, cy}, 4);
+    }
+
+    /** Mixes {@code a} into {@code b}: 0 gives b, 1 gives a. */
+    static Color blend(Color a, Color b, double t) {
+        return new Color((int) Math.round(a.getRed() * t + b.getRed() * (1 - t)),
+                (int) Math.round(a.getGreen() * t + b.getGreen() * (1 - t)),
+                (int) Math.round(a.getBlue() * t + b.getBlue() * (1 - t)));
     }
 
     /** Draws centered text, shrinking the font until it fits inside the border. */

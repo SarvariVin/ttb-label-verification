@@ -1,7 +1,8 @@
 # ADR-0011: Lazy status recovery instead of a scheduler
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

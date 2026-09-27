@@ -1,7 +1,8 @@
 # ADR-0005: Portable SQL schema for PostgreSQL and H2
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

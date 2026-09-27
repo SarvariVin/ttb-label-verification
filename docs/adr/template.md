@@ -2,6 +2,7 @@
 
 - **Status:** Proposed | Accepted | Superseded by ADR-XXXX
 - **Date:** YYYY-MM-DD
+- **Author:** SarvariVin
 
 ## Context
 

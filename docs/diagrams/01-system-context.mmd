@@ -1,22 +1,18 @@
-%% System context — who uses TTB Label Verification and what it depends on
+%% Context view — people and external systems around TTB Label Verification
 flowchart LR
-    applicant(["👤 Applicant<br/>(industry labeling team)"])
-    specialist(["👤 TTB Labeling Specialist"])
+    applicant(["Applicant<br/>industry labeling team"])
+    specialist(["TTB labeling specialist"])
+    client(["API client<br/>scripts, integrations"])
 
-    subgraph lvs["TTB Label Verification — Spring Boot 3.5 / Java 21"]
-        app["Web UI (Thymeleaf)<br/>REST API /api/v1<br/>AI verification pipeline"]
-    end
+    lvs["<b>TTB Label Verification</b><br/>reads labels, compares them with<br/>the COLA application, proposes a verdict"]
 
-    db[("PostgreSQL<br/>(H2 in demo profile)")]
-    fs[("Image storage<br/>local filesystem")]
-    tess["Tesseract OCR<br/>native libtesseract via Tess4J<br/><i>default · free · on-host</i>"]
-    vision["Google Cloud Vision<br/>TEXT_DETECTION<br/><i>opt-in</i>"]
-    openai["OpenAI Chat Completions<br/>structured output<br/><i>opt-in</i>"]
+    tess["Tesseract OCR<br/><i>on-host, default</i>"]
+    vision["Google Cloud Vision<br/><i>opt-in</i>"]
+    openai["OpenAI<br/><i>opt-in</i>"]
 
-    applicant -- "submit labels + Form 5100.31 data" --> app
-    specialist -- "review, approve, override, configure" --> app
-    app -- "JPA / Flyway" --> db
-    app -- "store / load images" --> fs
-    app -- "OCR (local pipeline)" --> tess
-    app -. "OCR with word boxes (cloud pipeline)" .-> vision
-    app -. "classify OCR words into fields" .-> openai
+    applicant -- "submits labels + Form 5100.31 data,<br/>tracks own results" --> lvs
+    specialist -- "works queues, decides,<br/>tunes settings" --> lvs
+    client -- "REST /api/v1 (HTTP Basic)" --> lvs
+    lvs -- "local OCR" --> tess
+    lvs -. "word-level OCR" .-> vision
+    lvs -. "field classification" .-> openai

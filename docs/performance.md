@@ -1,8 +1,8 @@
 # Performance
 
-Image processing times and the performance matrix of the **local pipeline** (Tesseract OCR, no cloud services), measured on a developer machine. Container and Railway figures are in [deploy-railway.md](deploy-railway.md#measured-locally-under-the-same-limits).
+These are the timings and throughput of the **local pipeline** (Tesseract OCR, with no cloud services), measured on a developer machine. Figures for the 512 MB container and Railway are in [deploy-railway.md](deploy-railway.md#measured-locally-under-the-same-limits).
 
-## At a glance
+## Summary
 
 | Metric | Result |
 |--------|--------|
@@ -16,7 +16,9 @@ Image processing times and the performance matrix of the **local pipeline** (Tes
 | Pre-fill field accuracy (34 labels) | 185 / 193 checked values correct (95.9%); beverage type 34 / 34 |
 | Memory (JVM resident set) | 432 MB idle → 775 MB peak at 8 concurrent requests (default JVM, no heap cap) |
 
-## Test setup
+**In short:** a label is read and judged in about half a second, almost all of it OCR. The OCR concurrency limit keeps memory in check without failing requests, and images 1200–1600 px wide are the fastest to process.
+
+## How it was measured
 
 | Item | Value |
 |------|-------|
@@ -28,23 +30,24 @@ Image processing times and the performance matrix of the **local pipeline** (Tes
 | Images | 34 synthetic 1600×2000 px labels (fictional brands), 54 KB – 4.1 MB, PNG and JPEG |
 | Method | Pre-fill: median of 3 warm passes per image. Analysis: one submission per image, time read from the label page (`Analyzed by … in N ms`). The cold figure is the first request after startup. |
 
-**Label set:**
-- **14 clean labels:** spirits, wine and malt beverages in several fonts and colours.
-- **9 degraded images:** rotated 3°, 5×5 blur, JPEG quality 0.25, downscaled to 640 px, heavy noise, light-on-dark, low contrast, monospaced font, and rotated 2° + JPEG.
-- **11 deliberately flawed labels:** missing, title-case or truncated warning; illegal size; ABV, net contents, address and fanciful-name mismatches; no sulfite line; degraded with no warning.
+**The 34 labels:**
 
-## Why analysis takes about twice as long as pre-fill
+- **14 clean** labels: spirits, wine and malt beverages in a range of fonts and colors.
+- **9 degraded** images: rotated 3°, 5×5 blur, JPEG quality 0.25, shrunk to 640 px, heavy noise, light text on dark, low contrast, a monospaced font, and 2° rotation combined with JPEG.
+- **11 flawed on purpose:** a missing, title-case or truncated warning, an illegal container size, mismatched ABV, net contents, address or fanciful name, no sulfite line, and a degraded image with no warning.
+
+## Why a full analysis takes about twice as long as pre-fill
 
 | Step | OCR passes | Typical |
 |------|------------|---------|
 | Pre-fill | One pass with automatic layout (PSM 3), which also returns line heights to find the brand | ~290 ms |
 | Analysis | Two passes, sparse text (PSM 11) and single block (PSM 6), merged for the best chance of reading both decorative front text and the small-print warning | ~530 ms |
 
-Text search and field comparison take a few milliseconds. Almost all of the time is OCR.
+Searching the text and comparing fields takes only a few milliseconds. Nearly all of the time goes to OCR.
 
-## Performance matrix by image group
+## Results by image group
 
-Server-side times in milliseconds.
+Server-side times, in milliseconds.
 
 | Group | Labels | Pre-fill p50 / max | Analysis p50 / max | Submit round trip p50 / max | Values pre-filled (avg) | Verdicts as expected |
 |-------|--------|--------------------|--------------------|-----------------------------|-------------------------|----------------------|
@@ -53,9 +56,9 @@ Server-side times in milliseconds.
 | Flawed | 11 | 282 / 294 | 523 / 551 | 541 / 569 | 8.2 | 10 / 11 ¹ |
 | **All** | **34** | **290 / 501** | **532 / 793** | **552 / 813** | **8.6** | **33 / 34** |
 
-¹ A declared fanciful name that isn't on the label is approved, because a missing *optional* field is ignored by design ([ai-pipelines.md](ai-pipelines.md#from-field-results-to-a-verdict)).
+¹ A declared fanciful name that isn't printed on the label is still approved, because a missing *optional* field is ignored by design ([ai-pipelines.md](ai-pipelines.md#turning-field-results-into-a-verdict)).
 
-## Per-image results
+## Results for each image
 
 | # | Label | Condition | Size | Pre-fill ms | Values | Analysis ms | Round trip ms | Verdict |
 |---|-------|-----------|------|------------:|-------:|------------:|--------------:|---------|
@@ -94,15 +97,16 @@ Server-side times in milliseconds.
 | 33 | Silver Heron gin | different city | 118 KB | 270 | 8 | 492 | 509 | Needs correction |
 | 34 | Dusk Harbor rum | rotated + JPEG, no warning | 88 KB | 165 | 8 | 308 | 326 | Rejected |
 
-**What drives the time:**
-- **Upscaling** is the largest factor. Images under 1024 px are upscaled to 2048 px before OCR (#18: +70% time).
-- **Light-on-dark** images take longer (#19: +45%).
-- **Less text** is faster. Labels without a warning block take about half the time (#24, #34).
-- **File size** has little effect. The 4.1 MB noisy PNG (#20) took only 15% longer than a clean 130 KB label.
+**What makes an image slower or faster:**
+
+- **Upscaling matters most.** Anything under 1024 px is enlarged to 2048 px before OCR. #18 took 70% longer because of it.
+- **Light text on a dark background** is slower. #19 took 45% longer.
+- **Less text means less time.** Labels with no warning block finished in about half the time (#24, #34).
+- **File size barely matters.** The 4.1 MB noisy PNG (#20) took only 15% longer than a clean 130 KB label.
 
 ## Concurrency and throughput
 
-All 34 images were sent through pre-fill at 1, 2, 4 and 8 parallel clients.
+All 34 images were sent through pre-fill with 1, 2, 4 and 8 clients running in parallel.
 
 | Parallel clients | Wall time (34 images) | Throughput | Latency p50 | Latency p95 | Max | Peak memory (RSS) |
 |-----------------:|----------------------:|-----------:|------------:|------------:|----:|------------------:|
@@ -111,13 +115,13 @@ All 34 images were sent through pre-fill at 1, 2, 4 and 8 parallel clients.
 | 4 | 5.3 s | 6.4 /s | 621 ms | 766 ms | 886 ms | 714 MB |
 | 8 | 5.4 s | 6.2 /s | 1,243 ms | 1,523 ms | 1,534 ms | 775 MB |
 
-- **Throughput doubles** from 1 to 2 clients, then stays flat. `OCR_MAX_CONCURRENT=2` lets two OCR jobs run at once, and the rest wait in a fair queue.
-- **Beyond the limit, latency grows linearly** (about 2× at 4 clients and 4× at 8), but nothing fails or times out. That is the intended back-pressure: the OCR engine is protected from memory spikes.
-- On this 11-core machine, raising `OCR_MAX_CONCURRENT` would increase throughput at the cost of memory. On a 512 MB container keep it at 1 (the `railway` profile's default). See [deploy-railway.md](deploy-railway.md).
+- **Throughput doubles going from 1 client to 2, then levels off.** `OCR_MAX_CONCURRENT=2` lets two OCR jobs run at once, and the others wait their turn in a fair queue.
+- **Past that limit, latency rises in proportion** (about 2× with 4 clients, 4× with 8), but nothing fails or times out. That is the intended back-pressure, and it protects the OCR engine from memory spikes.
+- On this 11-core machine, a higher `OCR_MAX_CONCURRENT` would buy throughput at the cost of memory. On a 512 MB container, keep it at 1, which is the `railway` profile's default ([deploy-railway.md](deploy-railway.md)).
 
-## Resolution sweep
+## Effect of image width
 
-Label #01 (Ember Ridge bourbon) was resized to each width and run through pre-fill and a full submission.
+Label #01 (Ember Ridge bourbon) was resized to each width, then pre-filled and fully submitted.
 
 | Width | File | Pre-fill ms | Values | Verdict | Note |
 |------:|-----:|------------:|-------:|---------|------|
@@ -129,8 +133,8 @@ Label #01 (Ember Ridge bourbon) was resized to each width and run through pre-fi
 | 1600 px | 157 KB | 318 | 10 | Approved | Native size (original) |
 | 2400 px | 586 KB | 456 | 10 | Approved | Native size |
 
-- **Fastest range: 1200–1600 px wide.** Below 1024 px the upscale roughly doubles the time. Above 1600 px, OCR simply has more pixels to read.
-- Crisp synthetic text survives even 400 px, because the upscaler restores clean edges. **Real camera photos are not that forgiving.** Keep the guidance of about 1000 px or wider for real labels, so the small-print health warning stays legible.
+- **1200–1600 px is the sweet spot.** Below 1024 px the upscaling roughly doubles the time, and above 1600 px OCR just has more pixels to work through.
+- Sharp synthetic text survives even at 400 px, because the upscaler restores clean edges. **Real camera photos are less forgiving.** For real labels, stick to about 1000 px or wider so the small-print warning stays readable.
 
 ## Memory
 
@@ -141,11 +145,11 @@ Label #01 (Ember Ridge bourbon) was resized to each width and run through pre-fi
 | 8 parallel clients | 775 MB peak |
 | After the run | 749 MB |
 
-These figures use the **default JVM**, which on this machine may use a heap of up to a quarter of 18 GB, so it grows freely. With the container settings from the Dockerfile (`-Xmx256m`, serial GC, one OCR at a time), the same kind of workload peaked at **402 MB** ([deploy-railway.md](deploy-railway.md#measured-locally-under-the-same-limits)).
+These numbers use the **default JVM**, which on this 18 GB machine can grow its heap to about a quarter of RAM, so memory expands freely. With the Dockerfile's container settings (`-Xmx256m`, serial GC, one OCR job at a time), a similar workload peaked at **402 MB** ([deploy-railway.md](deploy-railway.md#measured-locally-under-the-same-limits)).
 
-## Limitations of these numbers
+## What these numbers don't show
 
-- **Synthetic images.** Real photos, with glare, curvature, perspective and embossing, will be slower and less accurate. Build a benchmark from real, consented submissions before setting service levels ([production.md](production.md#5-ai-pipeline)).
-- **Single machine, loopback network.** Upload time over a real network is not included. For a 150 KB label on a typical connection it adds roughly 50–200 ms.
-- **In-memory H2.** Database time is negligible here. PostgreSQL adds a few milliseconds per submission.
-- **Local pipeline only.** The optional cloud pipeline (Google Vision + OpenAI) typically takes 2–5 s per label and was not measured here.
+- **Real photos.** Glare, curvature, perspective and embossing will make real labels slower and harder to read. Build a benchmark from real, consented submissions before committing to service levels ([production.md](production.md#5-ai-pipeline)).
+- **Network time.** Everything ran on one machine over loopback. Uploading a 150 KB label over a typical connection adds roughly 50–200 ms.
+- **Database time.** In-memory H2 makes it negligible. PostgreSQL adds a few milliseconds per submission.
+- **The cloud pipeline.** Google Vision plus OpenAI usually takes 2–5 s per label, and it wasn't measured here.

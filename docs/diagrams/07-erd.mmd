@@ -1,4 +1,4 @@
-%% Entity-relationship diagram (Flyway V1__init_schema.sql)
+%% Entity-relationship diagram (Flyway V1–V3)
 erDiagram
     APPLICANTS ||--o{ USERS : "applicant users"
     APPLICANTS ||--o{ LABELS : submits
@@ -14,6 +14,8 @@ erDiagram
     USERS ||--o{ HUMAN_REVIEWS : writes
     LABELS ||--o{ STATUS_OVERRIDES : "status audit"
     USERS ||--o{ STATUS_OVERRIDES : writes
+    LABEL_IMAGES ||--o| IMAGE_BLOBS : "bytes when storage=database (by storage_key)"
+    SPRING_SESSION ||--o{ SPRING_SESSION_ATTRIBUTES : holds
 
     USERS {
         varchar id PK
@@ -106,4 +108,21 @@ erDiagram
         varchar field_name
         text canonical_value
         text variant_value
+    }
+    IMAGE_BLOBS {
+        varchar storage_key PK "V2"
+        varchar content_type
+        int size_bytes
+        bytea content
+    }
+    SPRING_SESSION {
+        char primary_id PK "V3"
+        char session_id
+        bigint expiry_time
+        varchar principal_name
+    }
+    SPRING_SESSION_ATTRIBUTES {
+        char session_primary_id PK,FK
+        varchar attribute_name PK
+        bytea attribute_bytes
     }

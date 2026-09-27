@@ -3,8 +3,8 @@
 <head th:replace="~{fragments/layout :: head('Settings')}"></head>
 <body>
 <header th:replace="~{fragments/layout :: topbar}"></header>
-<main>
-  <div class="page-header"><div><h1>Settings</h1><p class="muted">Specialist-only. Changes apply to the next analysis.</p></div></div>
+<main id="main">
+  <div class="page-header"><div><p class="eyebrow">Specialist workspace</p><h1>Settings</h1><p class="muted">Specialist-only. Changes apply to the next analysis.</p></div></div>
   <th:block th:replace="~{fragments/layout :: flash}"></th:block>
 
   <form th:action="@{/settings}" method="post">
@@ -44,17 +44,18 @@
         </div>
       </fieldset>
     </div>
-    <div class="actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
+    <div class="actions form-actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
   </form>
 
   <div class="card" th:unless="${#maps.isEmpty(strictness)}">
     <h2>Field strictness (reference)</h2>
     <p class="small muted">Recorded per field; the comparison strategies in docs/ai-pipelines.md are applied today.</p>
-    <table>
+    <div class="table-wrap"><table>
       <thead><tr><th>Field</th><th>Strictness</th></tr></thead>
       <tbody><tr th:each="e : ${strictness}"><td class="mono" th:text="${e.key}"></td><td th:text="${e.value}"></td></tr></tbody>
-    </table>
+    </table></div>
   </div>
 </main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
 </body>
 </html>

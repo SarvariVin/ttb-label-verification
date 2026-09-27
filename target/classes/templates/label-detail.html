@@ -5,10 +5,10 @@
                reviewable=${d.effectiveStatus.name() == 'PENDING_REVIEW' or d.effectiveStatus.name() == 'NEEDS_CORRECTION'
                             or d.effectiveStatus.name() == 'CONDITIONALLY_APPROVED'}">
 <header th:replace="~{fragments/layout :: topbar}"></header>
-<main>
+<main id="main">
   <div class="page-header">
     <div>
-      <p class="small muted"><a th:href="@{/}">← Dashboard</a></p>
+      <p class="eyebrow"><a th:href="@{/}">← Dashboard</a></p>
       <h1 th:text="${d.applicationData.brandName}">Brand</h1>
       <p class="muted">
         <span th:text="${d.label.beverageType.label()}">Type</span> ·
@@ -63,12 +63,16 @@
     <!-- Field comparison + review -->
     <section>
       <form class="card" th:action="@{/labels/{id}/review(id=${d.label.id})}" method="post">
-        <h2>Field comparison</h2>
+        <div class="card-header">
+          <h2>Field comparison</h2>
+          <span class="small muted" th:unless="${#lists.isEmpty(d.items)}"
+                th:text="${#lists.size(d.items.?[status.name() == 'MATCH'])} + ' of ' + ${#lists.size(d.items)} + ' fields match'">0 of 0 fields match</span>
+        </div>
         <div class="empty" th:if="${#lists.isEmpty(d.items)}">No analysis results yet.</div>
         <div class="table-wrap" th:unless="${#lists.isEmpty(d.items)}">
           <table>
             <tbody>
-            <tr class="field-row" th:each="i : ${d.items}" th:attr="data-field-item=${i.id}">
+            <tr class="field-row" th:each="i : ${d.items}" th:classappend="'status-' + ${@fmt.css(i.status)}" th:attr="data-field-item=${i.id}">
               <td>
                 <strong th:text="${i.fieldName.displayName()}">Field</strong>
                 <div><span class="badge" th:classappend="'badge-' + ${@fmt.css(i.status)}" th:text="${@fmt.humanize(i.status)}"></span></div>
@@ -174,5 +178,6 @@
     </section>
   </div>
 </main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
 </body>
 </html>

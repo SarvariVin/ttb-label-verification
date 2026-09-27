@@ -3,9 +3,10 @@
 <head th:replace="~{fragments/layout :: head('New submission')}"></head>
 <body>
 <header th:replace="~{fragments/layout :: topbar}"></header>
-<main>
+<main id="main">
   <div class="page-header">
     <div>
+      <p class="eyebrow"><a th:href="@{/}">← My submissions</a></p>
       <h1>New label submission</h1>
       <p class="muted">Enter your COLA application data (TTB Form 5100.31) and upload the label images.
         We compare the two automatically; a specialist makes the final decision.</p>
@@ -20,7 +21,7 @@
   </div>
 
   <form th:action="@{/submit}" th:object="${form}" method="post" enctype="multipart/form-data"
-        data-busy="Analyzing label…" th:attr="data-prefill-url=@{/submit/extract}" id="submission-form">
+        data-busy="Analyzing label…" th:attr="data-prefill-url=@{/submit/extract}" id="submission-form" class="steps">
     <input type="hidden" th:field="*{priorLabelId}">
     <div class="alert alert-info" th:if="*{priorLabelId != null and priorLabelId != ''}">
       This submission corrects a previous label (<span class="mono" th:text="*{priorLabelId}"></span>).
@@ -122,11 +123,12 @@
       </div>
     </fieldset>
 
-    <div class="actions">
+    <div class="actions form-actions">
       <button class="btn btn-primary" type="submit">Submit for verification</button>
       <a class="btn" th:href="@{/}">Cancel</a>
     </div>
   </form>
 </main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
 </body>
 </html>

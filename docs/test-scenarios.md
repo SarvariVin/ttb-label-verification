@@ -1,16 +1,17 @@
 # Test Scenarios
 
-The full catalogue of functional, security, and non-functional test scenarios.
+Every functional, security and non-functional scenario the system is expected to handle, how each one is checked, and the latest result.
 
-**How each scenario is verified**
+**Kinds of evidence**
 
-- **Auto** means an automated test covers it. The *Evidence* column names the test class. All 117 tests pass with `./mvnw test`.
-- **HTTP** means it was checked against a running instance with curl, using the same session, CSRF, and multipart flow a browser uses.
-- **Manual** means it needs a person at a browser (visual and interaction checks). The *Result* column says "Not run" until someone executes it.
+- **Auto:** an automated test covers it, and the *Evidence* column names the test class. All 117 tests pass with `./mvnw test`.
+- **HTTP:** checked against a running instance with curl, using the same session, CSRF and multipart flow as a browser.
+- **Browser:** checked by driving a real browser against a running instance.
+- **Manual:** needs a person at a browser for visual or interaction checks. *Result* reads "Not run" until someone does it.
 
-**Test data:** synthetic labels in [test-labels/](../test-labels/README.md). Bootstrap accounts: `specialist@example.gov` and `applicant@example.com`. The password comes from `APP_SEED_PASSWORD`, or from the startup log.
+**Test data:** the synthetic labels in [test-labels/](../test-labels/README.md). An empty database gets three bootstrap accounts: `specialist@example.gov`, `applicant@example.com` (Sample Distilling Co.) and `applicant.two@example.com` (Sample Winery LLC). They share the password from `APP_SEED_PASSWORD`, or the one printed in the startup log.
 
-**Test classes**
+**The test classes**
 
 | Class | Kind | Needs Tesseract |
 |-------|------|-----------------|
@@ -43,7 +44,7 @@ The full catalogue of functional, security, and non-functional test scenarios.
 | AUTH-11 | Accounts from `APP_USERS` (hashes and plain) | Start with 2 specialists and 4 applicants declared | All created with the right role and company; each can sign in; applicants get 403 on settings | Auto + HTTP | `UserProvisionerIntegrationTest`; jar run with real hashes: pass (6/6) |
 | AUTH-12 | `APP_USERS` invalid entries | Weak password, unknown role, bad email | Those entries skipped with a log line; others still created | Auto | `UserProvisionerIntegrationTest` |
 | AUTH-13 | `APP_USERS` idempotent, password rotation | Restart with the same value; change one password | No duplicates; only the changed password is updated | Auto | `UserProvisionerIntegrationTest` |
-| AUTH-14 | Bootstrap password reset | `APP_SEED_RESET_PASSWORD=true` with a new `APP_SEED_PASSWORD` | Both bootstrap accounts get the new password; nothing happens without the flag or with an empty password | Auto | `DataSeederResetTest` |
+| AUTH-14 | Bootstrap password reset | `APP_SEED_RESET_PASSWORD=true` with a new `APP_SEED_PASSWORD` | All three bootstrap accounts get the new password; nothing happens without the flag or with an empty password | Auto | `DataSeederResetTest` |
 | AUTH-15 | Demo login off by default | Default configuration | No picker on the login page; `POST /login/demo` refused | Auto | `DemoLoginIntegrationTest.DisabledByDefault` |
 | AUTH-16 | Demo login on | `APP_DEMO_LOGIN=true`, optional allow-list | Picker lists allowed accounts only, never passwords; selecting one signs in; CSRF required; others refused | Auto + browser | `DemoLoginIntegrationTest.Enabled`; browser: signed in as Specialist Two, pass |
 | AUTH-17 | Seeder runs before `APP_USERS` | Empty database with `APP_USERS` set | Bootstrap accounts and settings created, then the declared accounts | HTTP | Pass (log order checked) |
@@ -227,7 +228,7 @@ The full catalogue of functional, security, and non-functional test scenarios.
 
 ## 12. Production sample run (34 labels)
 
-Synthetic labels were generated for this run and sent to the deployed Railway application, first through OCR pre-fill and then through a full submission with the declared values. Details are in [ai-pipelines.md](ai-pipelines.md#production-sample-run-34-labels).
+Synthetic labels were generated for this run and sent to the deployed Railway application: first through OCR pre-fill, then as a full submission with the declared values. Details are in [ai-pipelines.md](ai-pipelines.md#34-label-run-on-the-deployed-service).
 
 | ID | Scenario | Labels | Expected | Type | Result |
 |----|----------|--------|----------|------|--------|
@@ -235,11 +236,25 @@ Synthetic labels were generated for this run and sent to the deployed Railway ap
 | PRD-02 | Clean labels, degraded images (rotation, blur, JPEG, 640 px, noise, low contrast, light-on-dark, monospace) | 9 | Approved | HTTP | 9/9 |
 | PRD-03 | Deliberately flawed labels (warning absent, title case or truncated; illegal size; ABV, net contents, address, fanciful name mismatches; no sulfite line) | 11 | Rejected / Needs correction / Conditionally approved per the rules | HTTP | 7/11 before the fixes; 10/11 after. The remaining one follows the documented rule that a missing optional field is ignored. |
 
-OCR took 0.5–0.9 s per image on the 512 MB container. The results after the fixes were measured on a local build; re-run against production once the fixes are deployed.
+OCR took 0.5–0.9 s per image on the 512 MB container. The after-fix results come from a local build, so repeat the run on production once the fixes are deployed.
+
+## 13. Bootstrap accounts and user interface
+
+Verified on 2026-09-27 against a local `demo` instance, with the four sample labels submitted by the first test applicant.
+
+| ID | Scenario | Expected | Type | Evidence / Result |
+|----|----------|----------|------|-------------------|
+| SEED-01 | Start on an empty database with seeding on | One specialist and two applicants are created, each applicant in its own company; the log names all three | HTTP | Pass (startup log) |
+| SEED-02 | Second test applicant opens the dashboard after the first has submitted 4 labels | Sees "not submitted any labels yet" and none of the other company's brands | HTTP | Pass |
+| UI-01 | Navigate between pages as each role | The current page's nav link is highlighted (`aria-current="page"`); role-specific links only | Browser | Pass |
+| UI-02 | Label detail at phone width (≈ 337 px) | No horizontal page scroll; field rows stack with a status-colored edge | Browser | Pass (was failing before the fix) |
+| UI-03 | Dashboards at phone width | Stat tiles two per row; nav scrolls horizontally on one line | Browser | Pass |
+| UI-04 | Sign-in page at desktop and phone width | Split brand panel and form on desktop; compact brand header above the form on phone | Browser | Pass |
+| UI-05 | Demo picker on the new sign-in page | Lists the three bootstrap accounts; choosing one and pressing Enter signs in | Browser | Pass |
 
 ---
 
-## Running
+## Running the tests
 
 ```bash
 ./mvnw test
@@ -249,7 +264,7 @@ OCR took 0.5–0.9 s per image on the 512 MB container. The results after the fi
 ./mvnw test -Dtest=SyntheticLabelsEndToEndTest
 ```
 
-For manual scenarios, start the demo profile, read the bootstrap password from the log, and use the synthetic labels:
+For manual and browser scenarios, start the demo profile, read the bootstrap password from the log (or add `APP_DEMO_LOGIN=true` to use the account picker), and use the synthetic labels:
 
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
@@ -257,7 +272,7 @@ For manual scenarios, start the demo profile, read the bootstrap password from t
 
 ## Summary
 
-Some scenarios are both automated and verified live, so the columns overlap.
+A scenario can be both automated and verified live, so the columns overlap.
 
 | Area | Scenarios | Automated | Verified live (HTTP / browser / Railway) | Not yet run |
 |------|-----------|-----------|------------------------------------------|-------------|
@@ -273,4 +288,5 @@ Some scenarios are both automated and verified live, so the columns overlap.
 | Security / non-functional | 10 | 0 | 4 | 6 |
 | Deployment | 11 | 5 | 5 | 3 |
 | Production sample run | 3 | 0 | 3 | 0 |
-| **Total** | **146** | **90** | **25** | **38** |
+| Bootstrap accounts and UI | 7 | 0 | 7 | 0 |
+| **Total** | **153** | **90** | **32** | **38** |

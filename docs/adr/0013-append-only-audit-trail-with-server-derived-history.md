@@ -1,7 +1,8 @@
 # ADR-0013: Append-only audit trail with server-derived history
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

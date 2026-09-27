@@ -1,45 +1,62 @@
 # REST API Reference
 
-Base path: `/api/v1`. Authentication: **HTTP Basic**, stateless. Sessions and cookies are ignored on this path, so no CSRF token is needed.
+Everything lives under `/api/v1`. Callers authenticate with **HTTP Basic** on every request. The API chain is stateless: it never creates a session or reads a cookie, so CSRF tokens aren't involved.
 
-The examples read credentials from environment variables, so no secret ever appears in a command line you might share:
+The examples read credentials from environment variables, so a command you copy or share never contains a secret:
 
 ```bash
 export API_USER=applicant@example.com API_PASSWORD='<your password>'
 ```
 
-Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) `application/problem+json`:
+## Conventions
+
+**Errors** follow [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) and are returned as `application/problem+json`:
 
 ```json
 { "type": "about:blank", "title": "Unprocessable Entity", "status": 422,
   "detail": "front.png: file content is not a JPEG, PNG or WebP image", "instance": "/api/v1/labels" }
 ```
 
-| Status | Meaning |
-|--------|---------|
-| 400 | Bean Validation failed (`detail` lists `field: message`) |
-| 401 | Missing or invalid credentials |
-| 403 | Authenticated but wrong role |
-| 404 | Not found, **or** not visible to the caller (applicants never learn other companies' label IDs exist) |
-| 422 | Business rule violated (bad image, ineligible state, CSV errors…) |
+| Status | When you get it |
+|--------|-----------------|
+| 400 | Bean Validation rejected the input. `detail` lists each `field: message`. |
+| 401 | No credentials, or wrong ones |
+| 403 | Signed in, but the role isn't allowed |
+| 404 | The resource doesn't exist, **or** the caller isn't allowed to see it. An applicant can't tell whether another company's label ID exists. |
+| 422 | A business rule failed: an unusable image, a label in the wrong state, CSV errors, and so on |
 
-Enum values are upper-case: `DISTILLED_SPIRITS | WINE | MALT_BEVERAGE`, `PENDING | PROCESSING | PENDING_REVIEW | APPROVED | CONDITIONALLY_APPROVED | NEEDS_CORRECTION | REJECTED`, `MATCH | MISMATCH | NOT_FOUND | NEEDS_CORRECTION`.
+**Enums** are upper case:
+
+- Beverage type: `DISTILLED_SPIRITS | WINE | MALT_BEVERAGE`
+- Label status: `PENDING | PROCESSING | PENDING_REVIEW | APPROVED | CONDITIONALLY_APPROVED | NEEDS_CORRECTION | REJECTED`
+- Field status: `MATCH | MISMATCH | NOT_FOUND | NEEDS_CORRECTION`
+
+**Who can call what**
+
+| Endpoint | Applicant | Specialist |
+|----------|:---------:|:----------:|
+| `POST /labels`, `POST /labels/extract` | ✓ | |
+| `GET /labels`, `GET /labels/{id}`, `GET /images/{id}` | ✓ (own company only) | ✓ |
+| `POST /labels/{id}/review`, `/override`, `/reanalyze`, `POST /labels/batch-approve` | | ✓ |
+| `GET` / `PUT /settings` | | ✓ |
 
 ---
 
-## Submit a label (applicant)
+## Applicant endpoints
 
-`POST /api/v1/labels` — `multipart/form-data`
+### Submit a label
+
+`POST /api/v1/labels` with `multipart/form-data`
 
 | Part | Required | Notes |
 |------|----------|-------|
-| `images` (repeat) | yes | 1–6 files, JPEG/PNG/WebP, ≤ 10 MB each; the first is treated as the front |
+| `images` (repeatable) | yes | 1 to 6 files, JPEG, PNG or WebP, up to 10 MB each. The first file is treated as the front. |
 | `beverageType` | yes | |
-| `containerSizeMl` | yes | positive integer |
+| `containerSizeMl` | yes | A positive whole number |
 | `brandName` | yes | |
-| `fancifulName`, `classType`, `classTypeCode`, `serialNumber`, `alcoholContent`, `netContents`, `nameAndAddress`, `qualifyingPhrase`, `countryOfOrigin`, `grapeVarietal`, `appellationOfOrigin`, `vintageYear`, `sulfiteDeclaration` (bool), `ageStatement`, `stateOfDistillation` | no | |
-| `priorLabelId` | no | Links a correction to an earlier label of the same applicant |
-| `healthWarning` | no | Stored for the record only; the label is always verified against the statutory text |
+| `fancifulName`, `classType`, `classTypeCode`, `serialNumber`, `alcoholContent`, `netContents`, `nameAndAddress`, `qualifyingPhrase`, `countryOfOrigin`, `grapeVarietal`, `appellationOfOrigin`, `vintageYear`, `sulfiteDeclaration` (boolean), `ageStatement`, `stateOfDistillation` | no | |
+| `priorLabelId` | no | Marks this as a correction of an earlier label from the same applicant |
+| `healthWarning` | no | Kept for the record only. The label is always checked against the statutory text. |
 
 ```bash
 curl -u "$API_USER:$API_PASSWORD" -X POST http://localhost:8080/api/v1/labels \
@@ -50,16 +67,16 @@ curl -u "$API_USER:$API_PASSWORD" -X POST http://localhost:8080/api/v1/labels \
   -F appellationOfOrigin="Sonoma Coast"
 ```
 
-`201 Created` when analysis completed; `202 Accepted` when the label was saved but analysis failed or timed out (`error` explains, `timedOut` says which):
+The response is **201 Created** when analysis finished. It is **202 Accepted** when the label was saved but analysis failed or ran out of time: `error` says why, and `timedOut` says which of the two happened.
 
 ```json
 { "labelId": "XFtDvtaaJitdrukTU8jTW", "status": "PENDING_REVIEW", "aiProposedStatus": "APPROVED",
   "overallConfidence": 99, "error": null, "timedOut": false }
 ```
 
-## Pre-fill suggestions (applicant)
+### Get pre-fill suggestions
 
-`POST /api/v1/labels/extract` — `multipart/form-data` with one or more `images` parts. Reads the label and returns suggested Form 5100.31 values. Nothing is stored.
+`POST /api/v1/labels/extract` with `multipart/form-data` and one or more `images` parts. It reads the label and suggests Form 5100.31 values. Nothing is saved.
 
 ```bash
 curl -u "$API_USER:$API_PASSWORD" -X POST http://localhost:8080/api/v1/labels/extract \
@@ -75,24 +92,28 @@ curl -u "$API_USER:$API_PASSWORD" -X POST http://localhost:8080/api/v1/labels/ex
   "filledCount": 10, "source": "tesseract-local", "processingTimeMs": 563 }
 ```
 
-Keys in `fields` match the submission parameters, so a client can send them straight to `POST /api/v1/labels` after the applicant confirms them. The health warning is never suggested; it is always verified against the statutory text. Errors: 422 (not an image or too many images), 503 (no OCR engine available).
+The keys in `fields` have the same names as the submission parameters, so a client can pass them straight to `POST /api/v1/labels` once the applicant has confirmed them. The health warning is never suggested; it is always checked against the statutory text. The call returns **422** for a file that isn't an image or for too many images, and **503** when no OCR engine is available.
 
-The web form uses the same logic at `POST /submit/extract` (session + CSRF).
+The web form uses the same logic at `POST /submit/extract` (session plus CSRF).
 
-## List labels
+---
+
+## Shared read endpoints
+
+### List labels
 
 `GET /api/v1/labels?queue=ready|review|all`
 
-- Specialists: `ready` (Ready to approve), `review` (Needs review), or `all` (default).
-- Applicants: always their own submissions; `queue` is ignored.
+- **Specialists** pick a queue: `ready` (Ready to approve), `review` (Needs review), or `all`, which is the default.
+- **Applicants** always get their own company's submissions, and `queue` is ignored.
 
 ```json
 [{ "id": "XFtD…", "brandName": "Quillmoor Cellars", "beverageType": "WINE", "applicant": "Sample Distilling Co.",
    "status": "PENDING_REVIEW", "aiProposedStatus": "APPROVED", "overallConfidence": 99,
-   "readyToApprove": true, "createdAt": "2026-09-24T01:40:12Z", "deadlineDaysRemaining": null }]
+   "readyToApprove": true, "createdAt": "2026-09-27T01:40:12Z", "deadlineDaysRemaining": null }]
 ```
 
-## Label detail
+### Label detail
 
 `GET /api/v1/labels/{id}`
 
@@ -110,11 +131,19 @@ The web form uses the same logic at `POST /submit/extract` (session + CSRF).
   "createdAt": "…" }
 ```
 
-For **applicants**, `aiProposedStatus`, `overallConfidence`, and each field's `confidence` and `reasoning` are `null`.
+For **applicants**, `aiProposedStatus`, `overallConfidence`, and each field's `confidence` and `reasoning` come back as `null`. Scoring stays internal to TTB.
 
-## Field review (specialist)
+### Images
 
-`POST /api/v1/labels/{id}/review` — allowed when status is `PENDING_REVIEW`, `NEEDS_CORRECTION`, `CONDITIONALLY_APPROVED` or `PROCESSING`.
+`GET /api/v1/images/{id}` streams the stored bytes with their content type and `Cache-Control: no-store`. It follows the same visibility rules as labels.
+
+---
+
+## Specialist endpoints
+
+### Review individual fields
+
+`POST /api/v1/labels/{id}/review` works while the label is `PENDING_REVIEW`, `NEEDS_CORRECTION`, `CONDITIONALLY_APPROVED` or `PROCESSING`.
 
 ```json
 { "overrides": [
@@ -122,23 +151,26 @@ For **applicants**, `aiProposedStatus`, `overallConfidence`, and each field's `c
 ] }
 ```
 
-`resolvedStatus` ∈ `MATCH | MISMATCH | NOT_FOUND`. Items not listed keep their status. An empty list re-derives the status from the AI results as they stand, which accepts the AI's field findings. Response:
+`resolvedStatus` is one of `MATCH | MISMATCH | NOT_FOUND`. Fields you leave out keep their current status. Sending an empty list works the status out again from the AI's findings as they stand, which amounts to accepting them. The response has the new status:
 
 ```json
 { "status": "APPROVED" }
 ```
 
-## Status override (specialist)
+### Override the label status
 
-`POST /api/v1/labels/{id}/override` → `204 No Content`
+`POST /api/v1/labels/{id}/override` returns **204 No Content**.
 
 ```json
 { "newStatus": "NEEDS_CORRECTION", "justification": "Net contents on label is 700 mL, application says 750 mL", "reasonCode": "net_contents" }
 ```
 
-`newStatus` ∈ `APPROVED | CONDITIONALLY_APPROVED | NEEDS_CORRECTION | REJECTED`. `justification` must be ≥ 10 characters. The status can't be overridden while the label is `PENDING`/`PROCESSING`, or set to its current value. Correction deadlines are set automatically (7 or 30 days).
+- `newStatus` is one of `APPROVED | CONDITIONALLY_APPROVED | NEEDS_CORRECTION | REJECTED`.
+- `justification` needs at least 10 characters. It becomes part of the audit trail.
+- You can't override a label that is `PENDING` or `PROCESSING`, or set the status it already has.
+- Correction deadlines (7 or 30 days) are set automatically.
 
-## Batch approve (specialist)
+### Batch approve
 
 `POST /api/v1/labels/batch-approve`
 
@@ -146,27 +178,23 @@ For **applicants**, `aiProposedStatus`, `overallConfidence`, and each field's `c
 { "labelIds": ["a…", "b…"] }
 ```
 
-At most 100 IDs. Each label is re-checked server-side (pending review, confidence ≥ threshold, all fields match), and ineligible ones are returned in `failedIds`:
+It accepts up to 100 IDs. The server checks each label again (pending review, confidence at or above the threshold, every field a match). Labels that fail the check are listed in `failedIds` and left untouched:
 
 ```json
 { "approvedCount": 1, "failedIds": ["b…"] }
 ```
 
-## Re-analyze (specialist)
+### Re-analyze
 
-`POST /api/v1/labels/{id}/reanalyze` runs the pipeline again with current settings. The previous result stays in history.
+`POST /api/v1/labels/{id}/reanalyze` runs the pipeline again with the current settings. The earlier result stays in the history.
 
 ```json
 { "validationResultId": "vr…", "proposedStatus": "APPROVED", "overallConfidence": 97, "modelUsed": "tesseract-local" }
 ```
 
-## Images
+### Settings
 
-`GET /api/v1/images/{id}` returns the raw bytes with the stored content type and `Cache-Control: no-store`. The same data scoping as labels applies.
-
-## Settings (specialist)
-
-`GET /api/v1/settings` · `PUT /api/v1/settings`
+`GET /api/v1/settings` and `PUT /api/v1/settings`
 
 ```json
 { "pipelineModel": "local", "approvalThreshold": 90,
@@ -174,8 +202,12 @@ At most 100 IDs. Each label is re-checked server-side (pending review, confidenc
   "cloudAvailable": false, "localAvailable": true }
 ```
 
-`cloudAvailable` and `localAvailable` are read-only and ignored on `PUT`. `pipelineModel` ∈ `local | cloud`; `approvalThreshold` is 50–100.
+- `pipelineModel` is `local` or `cloud`.
+- `approvalThreshold` must be between 50 and 100.
+- `cloudAvailable` and `localAvailable` are read-only, and `PUT` ignores them.
+
+---
 
 ## Health
 
-`GET /actuator/health` (unauthenticated) → `{"status":"UP"}`
+`GET /actuator/health` needs no authentication and returns `{"status":"UP"}`.

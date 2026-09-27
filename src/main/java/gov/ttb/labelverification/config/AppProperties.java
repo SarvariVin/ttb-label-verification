@@ -1,6 +1,7 @@
 package gov.ttb.labelverification.config;
 
 import java.time.Duration;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -22,15 +23,23 @@ public record AppProperties(
     }
 
     /**
-     * Bootstrap accounts for an empty database. {@code password} should come from a
-     * secret; when blank a random one is generated and logged once.
+     * Bootstrap accounts for an empty database: one specialist and two test applicants, each
+     * applicant in its own company so that the "own submissions only" rule can be tried.
+     * {@code password} should come from a secret; when blank a random one is generated and logged once.
      */
     public record Seed(@DefaultValue("true") boolean enabled,
                        String password,
                        @DefaultValue("false") boolean resetPassword,
                        @DefaultValue("specialist@example.gov") String specialistEmail,
                        @DefaultValue("applicant@example.com") String applicantEmail,
-                       @DefaultValue("Sample Distilling Co.") String applicantCompany) {
+                       @DefaultValue("Sample Distilling Co.") String applicantCompany,
+                       @DefaultValue("applicant.two@example.com") String applicant2Email,
+                       @DefaultValue("Sample Winery LLC") String applicant2Company) {
+
+        /** Every bootstrap account email, specialist first. */
+        public List<String> emails() {
+            return List.of(specialistEmail, applicantEmail, applicant2Email);
+        }
     }
 
     public record Pipeline(@DefaultValue("60s") Duration timeout) {

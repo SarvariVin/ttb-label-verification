@@ -1,33 +1,35 @@
-%% Extraction pipelines and field comparison
-flowchart TB
-    start(["Label images + expected fields"]) --> setting{"settings.submission_pipeline_model"}
-    setting -- "local (default)" --> L1
-    setting -- "cloud" --> C1
+%% Verification engine — read, locate, judge
+flowchart LR
+    in(["Label images<br/>+ expected fields"]) --> pick{"settings.<br/>submission_pipeline_model"}
 
-    subgraph local["Local pipeline — free, on-host"]
-        L1["Tesseract OCR per image<br/>grayscale · upscale &lt;1024px to 2048px<br/>PSM 11 (sparse) + PSM 6 (block), merged lines"]
-        L2["OcrTextSearch per expected field<br/>1 exact, whole words/numbers →<br/>2 GOVERNMENT WARNING landmark + all 6 body phrases →<br/>3 space/punctuation-insensitive →<br/>4 sliding window (≥ .9 noise; .75–.9 label text) → 5 scattered words<br/>numeric fields keep the OCR text"]
-        L1 --> L2
+    subgraph read["1 · READ"]
+        direction TB
+        L1["<b>Local (default)</b><br/>Tesseract per image<br/>grayscale · upscale &lt;1024 px → 2048 px<br/>PSM 11 sparse + PSM 6 block, lines merged"]
+        C1["<b>Cloud (opt-in)</b><br/>Google Vision TEXT_DETECTION<br/>images in parallel · word polygons"]
     end
 
-    subgraph cloud["Cloud pipeline — opt-in"]
-        C1["Stage 1: Google Vision TEXT_DETECTION<br/>parallel, word-level polygons"]
-        C2["Stage 2: OpenAI classification<br/>indexed word list + beverage-type prompt<br/>strict JSON schema → field, value, wordIndices"]
-        C3["Stage 3: BoundingBoxMath<br/>union of word boxes → normalized 0–1"]
-        C1 --> C2 --> C3
+    subgraph locate["2 · LOCATE"]
+        direction TB
+        L2["<b>OcrTextSearch</b> per expected field<br/>① exact, whole words/numbers<br/>② warning: landmark + all 6 phrases<br/>③ ignore spaces/punctuation<br/>④ sliding window (≥ .9 noise · .75–.9 label text)<br/>⑤ scattered words<br/>numbers keep the OCR text"]
+        C2["<b>OpenAI classification</b><br/>indexed word list + beverage-type prompt<br/>strict JSON → field, value, wordIndices"]
+        C3["<b>BoundingBoxMath</b><br/>union of word boxes → 0–1 coordinates"]
+        C2 --> C3
     end
 
-    L2 --> R["ExtractionResult"]
-    C3 --> R
-    C1 -. "error" .-> L1
-    L1 -. "error, if cloud configured" .-> C1
+    subgraph judge["3 · JUDGE"]
+        direction TB
+        V{"Accepted<br/>variant?"} -- yes --> M["MATCH (95)"]
+        V -- no --> FC["<b>FieldComparator</b><br/>EXACT · FUZZY (Dice ≥ .8)<br/>NORMALIZED (ABV · mL · years)<br/>CONTAINS · ENUM (qualifying phrases)"]
+        FC --> MI{"Mismatch on a<br/>minor field?"}
+        MI -- yes --> NC["NEEDS_CORRECTION"]
+        MI -- no --> ST["MATCH / MISMATCH / NOT_FOUND"]
+        M & NC & ST --> SD["<b>StatusDeterminer</b><br/>AI-proposed status<br/>overall = mean confidence"]
+    end
 
-    R --> V{"Accepted variant?"}
-    V -- yes --> M["MATCH 95"]
-    V -- no --> FC["FieldComparator by strategy<br/>EXACT · FUZZY (Dice ≥ .8) · NORMALIZED (ABV, mL, years)<br/>CONTAINS · ENUM (qualifying phrases)"]
-    FC --> MI{"Mismatch on minor field?"}
-    MI -- yes --> NC["NEEDS_CORRECTION"]
-    MI -- no --> ST["MATCH / MISMATCH / NOT_FOUND"]
-    M --> SD
-    NC --> SD
-    ST --> SD["StatusDeterminer → AI-proposed status<br/>mean confidence → overall confidence"]
+    pick -- local --> L1
+    pick -- cloud --> C1
+    L1 --> L2
+    C1 --> C2
+    L2 & C3 --> R["ExtractionResult<br/>(same shape for both)"] --> V
+    C1 -. "error → fall back" .-> L1
+    L1 -. "error → fall back<br/>(if cloud configured)" .-> C1

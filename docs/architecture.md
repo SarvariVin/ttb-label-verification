@@ -1,308 +1,367 @@
 # Architecture
 
-How TTB Label Verification is structured internally: who uses it, how a label moves through the system, how data is stored, and how it is secured. Deployment and networking are in [infrastructure.md](infrastructure.md), and the reasoning behind each choice is in the [ADRs](adr/README.md).
+This document describes how TTB Label Verification is built, from the outside in: first the people and systems around it, then the runtime containers, then the layers inside the application, and finally how a label moves through them. Hosting and networking are covered in [infrastructure.md](infrastructure.md). The reasons behind each choice are recorded as [ADRs](adr/README.md).
 
-All diagrams are Mermaid, with sources in [diagrams/](diagrams/).
+Diagrams are Mermaid, and their sources live in [diagrams/](diagrams/).
 
 ## Contents
 
-1. [System context](#1-system-context)
-2. [Components](#2-components)
-3. [Submission flow](#3-submission-flow)
-4. [Review flow](#4-review-flow)
-5. [AI pipeline](#5-ai-pipeline)
-6. [Label status lifecycle](#6-label-status-lifecycle)
-7. [Data model](#7-data-model)
-8. [Security model](#8-security-model)
-9. [Cross-cutting concerns](#9-cross-cutting-concerns)
+1. [Drivers and principles](#1-drivers-and-principles)
+2. [Context view](#2-context-view)
+3. [Container view](#3-container-view)
+4. [Layered component view](#4-layered-component-view)
+5. [Runtime view: submitting a label](#5-runtime-view-submitting-a-label)
+6. [Runtime view: deciding on a label](#6-runtime-view-deciding-on-a-label)
+7. [Verification engine](#7-verification-engine)
+8. [Label lifecycle](#8-label-lifecycle)
+9. [Data view](#9-data-view)
+10. [Security view](#10-security-view)
+11. [Presentation view](#11-presentation-view)
+12. [Quality attributes](#12-quality-attributes)
 
 ---
 
-## 1. System context
+## 1. Drivers and principles
+
+| Driver | How the architecture answers it |
+|--------|---------------------------------|
+| Specialists must stay in charge | The AI only *proposes* a status. A person approves, reviews field by field, or overrides with a written reason, and every one of those actions is logged. |
+| Works with no cloud accounts | The default pipeline is Tesseract, running on the same host. Cloud AI is an optional adapter behind the same interface ([ADR-0004](adr/0004-local-first-ocr-with-optional-cloud-ai-behind-a-pipeline-interface.md)). |
+| Regulatory rules change | TTB rules live in plain-Java packages (`regulatory`, `labels`, `ai.compare`) with no framework code, so they are cheap to test and edit ([ADR-0002](adr/0002-modular-monolith-with-pure-rule-packages.md)). |
+| Small, cheap hosting | One deployable JAR, one database, and a profile tuned for a 512 MB container ([ADR-0018](adr/0018-small-container-profile-for-paas-hosting.md)). |
+| Government-grade web security | Server-rendered pages, a strict CSP, CSRF on every form, and authorization checked at three layers ([ADR-0003](adr/0003-server-rendered-ui-with-progressive-enhancement.md), [ADR-0007](adr/0007-authorization-at-route-method-and-data-layers.md)). |
+
+**Design rules that hold everywhere**
+
+- Dependencies point inward, toward the rules. Rule packages never import Spring, JPA or HTTP types.
+- No AI or network call runs inside a database transaction ([ADR-0009](adr/0009-database-transactions-never-wrap-ai-calls.md)).
+- Audit rows are only ever added, never updated, and they are written before the label changes ([ADR-0013](adr/0013-append-only-audit-trail-with-server-derived-history.md)).
+- Status that depends on time is worked out when it is read, not by a scheduler ([ADR-0011](adr/0011-lazy-status-recovery-instead-of-a-scheduler.md)).
+
+## 2. Context view
 
 ```mermaid
 flowchart LR
-    applicant(["👤 Applicant<br/>(industry labeling team)"])
-    specialist(["👤 TTB Labeling Specialist"])
+    applicant(["Applicant<br/>industry labeling team"])
+    specialist(["TTB labeling specialist"])
+    client(["API client<br/>scripts, integrations"])
 
-    subgraph lvs["TTB Label Verification — Spring Boot 3.5 / Java 21"]
-        app["Web UI (Thymeleaf)<br/>REST API /api/v1<br/>AI verification pipeline"]
-    end
+    lvs["<b>TTB Label Verification</b><br/>reads labels, compares them with<br/>the COLA application, proposes a verdict"]
 
-    db[("PostgreSQL<br/>(H2 in demo profile)")]
-    fs[("Image storage<br/>local filesystem")]
-    tess["Tesseract OCR<br/>native libtesseract via Tess4J<br/><i>default · free · on-host</i>"]
-    vision["Google Cloud Vision<br/>TEXT_DETECTION<br/><i>opt-in</i>"]
-    openai["OpenAI Chat Completions<br/>structured output<br/><i>opt-in</i>"]
+    tess["Tesseract OCR<br/><i>on-host, default</i>"]
+    vision["Google Cloud Vision<br/><i>opt-in</i>"]
+    openai["OpenAI<br/><i>opt-in</i>"]
 
-    applicant -- "submit labels + Form 5100.31 data" --> app
-    specialist -- "review, approve, override, configure" --> app
-    app -- "JPA / Flyway" --> db
-    app -- "store / load images" --> fs
-    app -- "OCR (local pipeline)" --> tess
-    app -. "OCR with word boxes (cloud pipeline)" .-> vision
-    app -. "classify OCR words into fields" .-> openai
+    applicant -- "submits labels + Form 5100.31 data,<br/>tracks own results" --> lvs
+    specialist -- "works queues, decides,<br/>tunes settings" --> lvs
+    client -- "REST /api/v1 (HTTP Basic)" --> lvs
+    lvs -- "local OCR" --> tess
+    lvs -. "word-level OCR" .-> vision
+    lvs -. "field classification" .-> openai
 ```
 
 <sub>Source: [diagrams/01-system-context.mmd](diagrams/01-system-context.mmd)</sub>
 
+| Who or what | Relationship |
+|-------------|--------------|
+| Applicant | Uploads labels through the form, CSV batch or API, and sees only their own company's submissions and field outcomes. |
+| Specialist | Owns the decision: works the queues, resolves fields, sets the final status, and edits runtime settings. |
+| API client | Uses the same use cases over stateless REST. |
+| Tesseract | The default OCR engine, a native library on the same host. |
+| Google Vision + OpenAI | The optional cloud pipeline. It is switched on only when both keys are present, and adds bounding boxes and image-type classification. |
 
-| Actor / system | Interaction |
-|----------------|-------------|
-| Applicant | Submits labels (form, API, CSV batch); sees only their company's labels |
-| Specialist | Works the queues, reviews fields, sets final status, configures settings |
-| PostgreSQL | System of record; schema owned by Flyway |
-| Image storage | Uploaded label images, behind the `ImageStorage` interface |
-| Tesseract | Default OCR engine; native library loaded through Tess4J (JNA) |
-| Google Vision / OpenAI | Optional cloud pipeline; used only when both keys are configured |
-
-## 2. Components
-
-The application is a modular monolith ([ADR-0002](adr/0002-modular-monolith-with-pure-rule-packages.md)). `regulatory`, `labels` and `ai.compare` are plain Java with no framework imports.
+## 3. Container view
 
 ```mermaid
 flowchart TB
-    subgraph web["web"]
-        pages["page.*<br/>DashboardController · SubmitController<br/>LabelPageController · SettingsController<br/>ApplicantsController · LoginController"]
-        api["api.*<br/>LabelApiController · SettingsApiController<br/>DTOs · ApiExceptionHandler (RFC 9457)"]
+    browser(["Browser<br/>server-rendered pages + app.js"])
+    api(["API client"])
+
+    subgraph host["Application container (one JVM, Java 21)"]
+        web["Web layer<br/>Thymeleaf pages · REST /api/v1"]
+        core["Application + rules<br/>services · verdict engine"]
+        adapters["Adapters<br/>OCR · cloud AI · storage · JPA"]
+        tessn["libtesseract<br/>(native, via Tess4J)"]
+        web --> core --> adapters
+        adapters --> tessn
     end
 
-    subgraph security["security + config"]
-        sec["SecurityConfig<br/>API chain: stateless Basic<br/>Web chain: form login + CSRF + CSP"]
-        seed["DataSeeder · AppProperties · ClockConfig"]
+    db[("PostgreSQL 17<br/>labels · results · audit<br/>sessions · settings<br/>(images when storage=database)")]
+    disk[("Filesystem volume<br/>images when storage=filesystem")]
+    cloud["Google Vision + OpenAI<br/>(only when both keys are set)"]
+
+    browser -- "HTTPS, session cookie + CSRF" --> web
+    api -- "HTTPS, Basic auth, stateless" --> web
+    adapters -- "JDBC, Flyway-owned schema" --> db
+    adapters -- "file I/O" --> disk
+    adapters -. "HTTPS" .-> cloud
+```
+
+<sub>Source: [diagrams/17-containers.mmd](diagrams/17-containers.mmd)</sub>
+
+- **One application container.** Web, services, rules and adapters all run in a single Spring Boot 3.5 JVM. Scaling out means adding replicas behind a load balancer. Nothing lives only in one process's memory: sessions are in the database ([ADR-0019](adr/0019-http-sessions-stored-in-the-database.md)).
+- **PostgreSQL is the system of record.** Flyway owns the schema, and the same scripts run on H2 for the demo profile and the tests ([ADR-0005](adr/0005-portable-sql-schema-for-postgresql-and-h2.md)).
+- **Image storage can be swapped.** `app.storage.type=filesystem` writes to a volume. `database` stores the bytes in PostgreSQL, which suits platforms that allow only one volume, such as Railway.
+- **Railway's database URL is converted automatically.** Railway hands out a `postgresql://user:pass@host/db` URL. `DatabaseUrlEnvironmentPostProcessor` turns it into JDBC settings before Spring starts, and fails early with a clear message if it is missing.
+
+## 4. Layered component view
+
+```mermaid
+flowchart TB
+    subgraph L1["Presentation — web.page · web.api · templates · static"]
+        pages["Page controllers<br/>Dashboard · Submit · LabelPage<br/>Settings · Applicants · Login"]
+        rest["REST controllers + DTOs<br/>LabelApi · SettingsApi<br/>ApiExceptionHandler (RFC 9457)"]
+        view["Thymeleaf templates · layout fragments<br/>app.css (tokens) · app.js<br/>GlobalModelAdvice · ViewFormat"]
     end
 
-    subgraph service["service"]
-        sub["SubmissionService<br/>BatchSubmissionService"]
-        rev["ReviewService<br/>(review · override · batch approve · re-analyze)"]
-        qry["LabelQueryService · SlaMetricsService<br/>ApplicantService · SettingsService"]
-        ana["LabelAnalysisService<br/>(shared verification pipeline)"]
-        ext["ExtractionService<br/>(pipeline choice · fallback · timeout)"]
+    subgraph L2["Application — service (transactions + @PreAuthorize)"]
+        intake["SubmissionService · BatchSubmissionService<br/>PrefillService"]
+        decide["ReviewService<br/>review · override · batch approve · re-analyze"]
+        read["LabelQueryService · SlaMetricsService<br/>ApplicantService · SettingsService"]
+        analyze["LabelAnalysisService → ExtractionService<br/>pipeline choice · fallback · 60 s timeout"]
     end
 
-    subgraph ai["ai"]
-        local["local.LocalExtractionPipeline<br/>ocr.TesseractOcrEngine"]
-        cloud["cloud.CloudExtractionPipeline<br/>ocr.GoogleVisionOcrEngine<br/>OpenAiFieldClassifier · BoundingBoxMath"]
-        cmp["compare.FieldComparator<br/>compare.OcrTextSearch · TextNormalizer"]
+    subgraph L3["Domain rules — plain Java, no Spring"]
+        regs["regulatory<br/>BeverageType · FieldName · HealthWarning<br/>QualifyingPhrases · RegulatoryConstants"]
+        verdict["labels<br/>StatusDeterminer · EffectiveStatus<br/>Deadlines · ExpectedFields · SlaStatus"]
+        compare["ai.compare · ai.prefill<br/>FieldComparator · OcrTextSearch<br/>TextNormalizer · LabelFieldExtractor"]
     end
 
-    subgraph rules["labels + regulatory (pure, no Spring)"]
-        lbl["StatusDeterminer · EffectiveStatus<br/>Deadlines · ExpectedFields · SlaStatus"]
-        reg["BeverageType · FieldName · HealthWarning<br/>QualifyingPhrases · RegulatoryConstants"]
+    subgraph L4["Adapters — outbound"]
+        ocr["ai.local · ai.cloud · ai.ocr<br/>Tesseract · Google Vision · OpenAI"]
+        persist["domain + repository<br/>JPA entities · Spring Data"]
+        files["storage<br/>Local / Database ImageStorage<br/>ImageFileValidator"]
     end
 
-    subgraph data["domain + repository + storage"]
-        repo["JPA entities & Spring Data repositories"]
-        store["ImageStorage (LocalImageStorage)<br/>ImageFileValidator (magic bytes)"]
+    subgraph X["Platform — config · security"]
+        plat["SecurityConfig (two filter chains, CSP)<br/>AppProperties · DatabaseUrlEnvironmentPostProcessor<br/>DataSeeder · UserProvisioner · DemoLoginService · ClockConfig"]
     end
 
-    pages --> service
-    api --> service
-    sec -. guards .-> web
-    sec -. "@PreAuthorize" .-> service
-    sub --> ana
-    rev --> ana
-    ana --> ext
-    ext --> local
-    ext --> cloud
-    local --> cmp
-    ana --> cmp
-    ana --> lbl
-    rev --> lbl
-    qry --> lbl
-    cmp --> reg
-    lbl --> reg
-    service --> repo
-    service --> store
+    L1 --> L2
+    L2 --> L3
+    L2 --> L4
+    L4 -. "implements contracts used by" .-> L3
+    X -. "guards / configures" .-> L1
+    X -. "guards / configures" .-> L2
 ```
 
 <sub>Source: [diagrams/02-components.mmd](diagrams/02-components.mmd)</sub>
 
+| Layer | Packages (`gov.ttb.labelverification.*`) | Owns | Must not |
+|-------|-------------------------------------------|------|----------|
+| Presentation | `web.page`, `web.api`, `templates/`, `static/` | HTTP mapping, form binding, DTOs, view formatting, page chrome | Hold business rules, or hand entities to the API |
+| Application | `service` | Use cases, transaction boundaries, `@PreAuthorize`, orchestration | Call AI inside a transaction |
+| Domain rules | `regulatory`, `labels`, `ai.compare`, `ai.prefill` | Mandatory fields, comparison strategies, verdicts, deadlines, SLA status | Import Spring, JPA or I/O |
+| Adapters | `ai.local`, `ai.cloud`, `ai.ocr`, `domain`, `repository`, `storage` | OCR engines, cloud clients, persistence, image bytes | Decide a verdict |
+| Platform | `config`, `security` | Filter chains, typed properties, bootstrap accounts, principal | Contain use-case logic |
 
-| Package (`gov.ttb.labelverification.*`) | Responsibility |
-|-----------------------------------------|----------------|
-| `regulatory` | TTB rules as data: mandatory fields per beverage type, standards of fill, health-warning text, qualifying phrases |
-| `labels` | Verdict derivation, lazy status recovery, deadlines, SLA status |
-| `ai.compare` | Field comparison engine and OCR text search |
-| `ai.prefill` | Rule-based extraction of form values from OCR lines (pre-fill) |
-| `ai.local`, `ai.cloud`, `ai.ocr` | Extraction pipelines and OCR engines |
-| `service` | Use cases, transaction boundaries, method security |
-| `web.page`, `web.api` | Thymeleaf controllers; REST controllers and DTOs |
-| `domain`, `repository`, `storage` | JPA entities, Spring Data repositories, image storage and validation |
-| `config`, `security` | Filter chains, typed properties, bootstrap seeding, principal |
+The per-package detail is in the [package guide](../src/main/java/gov/ttb/labelverification/README.md).
 
-## 3. Submission flow
+## 5. Runtime view: submitting a label
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor A as Applicant
-    participant C as SubmitController / LabelApiController
-    participant S as SubmissionService
-    participant V as ImageFileValidator
-    participant FS as ImageStorage
-    participant DB as Database
-    participant AN as LabelAnalysisService
-    participant X as ExtractionService
-    participant P as Pipeline (local or cloud)
+    box Web
+        participant C as SubmitController /<br/>LabelApiController
+    end
+    box Application
+        participant S as SubmissionService
+        participant AN as LabelAnalysisService
+        participant X as ExtractionService
+    end
+    box Adapters
+        participant ST as ImageFileValidator +<br/>ImageStorage
+        participant P as Pipeline<br/>(local or cloud)
+        participant DB as Database
+    end
 
-    A->>C: POST form data + images (multipart)
-    C->>C: Bean Validation (LabelApplicationForm)
+    A->>C: multipart POST — form fields + 1–6 images
+    C->>C: Bean Validation of LabelApplicationForm
+
+    rect rgba(47, 111, 179, 0.08)
+    Note over C,DB: Phase 1 — intake (TX1)
     C->>S: submit(user, form, images)
-    loop each image
-        S->>V: validate(bytes, declared type)
-        V-->>S: detected type (magic bytes)
-        S->>FS: store(bytes)
+    loop for every image
+        S->>ST: check magic bytes & size, then store bytes
     end
-    S->>DB: TX1 insert label (PROCESSING) + application_data + label_images
+    S->>DB: TX1 — label PROCESSING + application_data + label_images
+    end
+
+    rect rgba(201, 162, 39, 0.10)
+    Note over S,P: Phase 2 — analysis (no transaction open)
     S->>AN: analyze(labelId)
-    AN->>DB: TX2 load expected fields + image keys
-    AN->>FS: load image bytes
-    AN->>X: extract(images, type, expected)
-    X->>P: run with timeout (60s)
-    alt primary pipeline fails
-        X->>P: fallback pipeline (if available)
+    AN->>DB: TX2 (read-only) — expected fields + image keys
+    AN->>ST: load image bytes
+    AN->>X: extract(images, beverage type, expected fields)
+    X->>P: run, bounded by 60 s
+    opt the chosen pipeline throws
+        X->>P: try the other pipeline, if available
     end
-    P-->>X: ExtractionResult (fields, boxes, metrics)
+    P-->>X: ExtractionResult — values, boxes, timings
     X-->>AN: result
-    AN->>AN: FieldComparator per field → StatusDeterminer
-    AN->>DB: TX3 insert validation_result + items,<br/>label → PENDING_REVIEW, ai_proposed_status, confidence
-    AN-->>S: Outcome
+    AN->>AN: FieldComparator per field, then StatusDeterminer
+    end
+
+    rect rgba(29, 122, 70, 0.08)
+    Note over AN,DB: Phase 3 — results (TX3)
+    AN->>DB: TX3 — validation_result + items,<br/>label PENDING_REVIEW with AI proposal + confidence
+    end
+
+    AN-->>S: outcome
     S-->>C: SubmissionResult
-    C-->>A: 201 Created / redirect to label page
-    Note over S,DB: On failure the label is set to PENDING (retry via Re-analyze). A label stuck in PROCESSING surfaces as PENDING_REVIEW after 5 minutes.
+    C-->>A: 201 Created, or redirect to the label page
+    Note over A,DB: Failure or timeout → label stays PENDING (Re-analyze retries).<br/>Stuck in PROCESSING for 5 min → shown as PENDING_REVIEW.
 ```
 
 <sub>Source: [diagrams/03-submission-sequence.mmd](diagrams/03-submission-sequence.mmd)</sub>
 
+A submission runs in three short transactions, with the slow analysis step outside all of them. TX1 records the label as `PROCESSING` with its data and images. Analysis then reads the images and calls the pipeline, with no transaction open. TX3 writes the field results and moves the label to `PENDING_REVIEW` with the AI's proposal.
 
-The AI call never runs inside a database transaction ([ADR-0009](adr/0009-database-transactions-never-wrap-ai-calls.md)).
+| When this goes wrong | The system does this |
+|----------------------|----------------------|
+| An image has the wrong type, is too large, or has mismatched magic bytes | Returns 422 and stores nothing |
+| Form data is invalid | Returns 400 from the API, or re-renders the form with messages |
+| The chosen pipeline throws | Tries the other pipeline if it is available ([ADR-0010](adr/0010-pipeline-fallback-in-both-directions-not-on-timeout.md)) |
+| Both pipelines fail, or 60 s pass | Keeps the label as `PENDING`, and a specialist can re-analyze |
+| The process dies mid-analysis | After 5 minutes the label is shown as `PENDING_REVIEW` |
 
-| Failure | Result |
-|---------|--------|
-| Invalid image (type, size, magic bytes) | 422; nothing persisted |
-| Validation error | 400 (API) / form re-rendered with messages (UI) |
-| Selected pipeline fails | Other pipeline tried if available ([ADR-0010](adr/0010-pipeline-fallback-in-both-directions-not-on-timeout.md)) |
-| Both fail, or timeout (60 s) | Label saved `PENDING`; specialist can re-analyze |
-| Process crash mid-analysis | Label shown as `PENDING_REVIEW` after 5 minutes |
-
-## 4. Review flow
+## 6. Runtime view: deciding on a label
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor SP as Specialist
-    participant UI as Dashboard / Label page
-    participant R as ReviewService
-    participant DB as Database
+flowchart TB
+    dash(["Review dashboard<br/>effective status computed on read,<br/>saved back only if it changed"]) --> tabs{"Which queue?"}
+    tabs -- "Ready to approve" --> ba
+    tabs -- "Needs review / All" --> open["Open a label"]
+    open --> how{"What does the<br/>specialist do?"}
+    how -- "fix individual fields" --> fr
+    how -- "decide the whole label" --> ov
+    how -- "run the check again" --> ra
 
-    SP->>UI: Open dashboard
-    UI->>DB: queues (effective status computed & persisted lazily)
-    UI-->>SP: Ready to approve | Needs review | All
+    subgraph ba["Batch approve — up to 100 labels"]
+        direction TB
+        ba1["For each label, in its own transaction"] --> ba2{"Still PENDING_REVIEW,<br/>confidence ≥ threshold,<br/>every item MATCH?"}
+        ba2 -- yes --> ba3["status_override row (audit)<br/>label → APPROVED"]
+        ba2 -- no --> ba4["returned in failedIds"]
+    end
 
-    alt Batch approve (Ready to approve tab)
-        SP->>R: batchApprove(ids ≤ 100)
-        loop each label — own transaction
-            R->>DB: re-check PENDING_REVIEW, confidence ≥ threshold, all items MATCH
-            R->>DB: insert status_override (audit) + label → APPROVED
-        end
-        R-->>SP: approvedCount, failedIds
-    else Field-level review
-        SP->>R: submitReview(labelId, [itemId → MATCH|MISMATCH|NOT_FOUND, note])
-        R->>DB: insert human_review per changed field (original status read from DB)
-        R->>R: StatusDeterminer over resolved items
-        R->>DB: label → derived status + correction deadline (7 / 30 days)
-    else Label-level override
-        SP->>R: overrideStatus(labelId, decision, justification ≥ 10 chars)
-        R->>DB: insert status_override + label → decision
-    else Re-analyze
-        SP->>R: reanalyze(labelId)
-        R->>DB: supersede current validation_result, insert new one
+    subgraph fr["Field review"]
+        direction TB
+        fr1["Resolve fields as MATCH / MISMATCH / NOT_FOUND + note"] --> fr2["human_reviews row per changed field<br/>(original status read from the database)"]
+        fr2 --> fr3["StatusDeterminer over resolved items<br/>→ new status + 7- or 30-day deadline"]
+    end
+
+    subgraph ov["Status override"]
+        direction TB
+        ov1["Decision + justification (≥ 10 characters)"] --> ov2["status_override row<br/>label → decision"]
+    end
+
+    subgraph ra["Re-analyze"]
+        direction TB
+        ra1["Run the pipeline with current settings"] --> ra2["Current validation_result superseded,<br/>new one inserted"]
     end
 ```
 
 <sub>Source: [diagrams/04-review-sequence.mmd](diagrams/04-review-sequence.mmd)</sub>
 
+- A label is **Ready to approve** when it is `PENDING_REVIEW`, the AI proposes `APPROVED`, every field is `MATCH`, and confidence is at or above the threshold. Batch approval checks all of this again on the server, one transaction per label, so a stale browser tab can't approve something that has since changed.
+- **Field review** takes each field's original status from the database, never from the request, and then derives the label's status again from the resolved fields.
 
-- **Ready to approve** means `PENDING_REVIEW`, an AI proposal of `APPROVED`, confidence at or above the threshold, and every field `MATCH`. Batch approval re-checks all of this on the server, one transaction per label.
-- **Field review** records the original status from the database, not from the request ([ADR-0013](adr/0013-append-only-audit-trail-with-server-derived-history.md)).
-
-## 5. AI pipeline
+## 7. Verification engine
 
 ```mermaid
-flowchart TB
-    start(["Label images + expected fields"]) --> setting{"settings.submission_pipeline_model"}
-    setting -- "local (default)" --> L1
-    setting -- "cloud" --> C1
+flowchart LR
+    in(["Label images<br/>+ expected fields"]) --> pick{"settings.<br/>submission_pipeline_model"}
 
-    subgraph local["Local pipeline — free, on-host"]
-        L1["Tesseract OCR per image<br/>grayscale · upscale &lt;1024px to 2048px<br/>PSM 11 (sparse) + PSM 6 (block), merged lines"]
-        L2["OcrTextSearch per expected field<br/>1 exact, whole words/numbers →<br/>2 GOVERNMENT WARNING landmark + all 6 body phrases →<br/>3 space/punctuation-insensitive →<br/>4 sliding window (≥ .9 noise; .75–.9 label text) → 5 scattered words<br/>numeric fields keep the OCR text"]
-        L1 --> L2
+    subgraph read["1 · READ"]
+        direction TB
+        L1["<b>Local (default)</b><br/>Tesseract per image<br/>grayscale · upscale &lt;1024 px → 2048 px<br/>PSM 11 sparse + PSM 6 block, lines merged"]
+        C1["<b>Cloud (opt-in)</b><br/>Google Vision TEXT_DETECTION<br/>images in parallel · word polygons"]
     end
 
-    subgraph cloud["Cloud pipeline — opt-in"]
-        C1["Stage 1: Google Vision TEXT_DETECTION<br/>parallel, word-level polygons"]
-        C2["Stage 2: OpenAI classification<br/>indexed word list + beverage-type prompt<br/>strict JSON schema → field, value, wordIndices"]
-        C3["Stage 3: BoundingBoxMath<br/>union of word boxes → normalized 0–1"]
-        C1 --> C2 --> C3
+    subgraph locate["2 · LOCATE"]
+        direction TB
+        L2["<b>OcrTextSearch</b> per expected field<br/>① exact, whole words/numbers<br/>② warning: landmark + all 6 phrases<br/>③ ignore spaces/punctuation<br/>④ sliding window (≥ .9 noise · .75–.9 label text)<br/>⑤ scattered words<br/>numbers keep the OCR text"]
+        C2["<b>OpenAI classification</b><br/>indexed word list + beverage-type prompt<br/>strict JSON → field, value, wordIndices"]
+        C3["<b>BoundingBoxMath</b><br/>union of word boxes → 0–1 coordinates"]
+        C2 --> C3
     end
 
-    L2 --> R["ExtractionResult"]
-    C3 --> R
-    C1 -. "error" .-> L1
-    L1 -. "error, if cloud configured" .-> C1
+    subgraph judge["3 · JUDGE"]
+        direction TB
+        V{"Accepted<br/>variant?"} -- yes --> M["MATCH (95)"]
+        V -- no --> FC["<b>FieldComparator</b><br/>EXACT · FUZZY (Dice ≥ .8)<br/>NORMALIZED (ABV · mL · years)<br/>CONTAINS · ENUM (qualifying phrases)"]
+        FC --> MI{"Mismatch on a<br/>minor field?"}
+        MI -- yes --> NC["NEEDS_CORRECTION"]
+        MI -- no --> ST["MATCH / MISMATCH / NOT_FOUND"]
+        M & NC & ST --> SD["<b>StatusDeterminer</b><br/>AI-proposed status<br/>overall = mean confidence"]
+    end
 
-    R --> V{"Accepted variant?"}
-    V -- yes --> M["MATCH 95"]
-    V -- no --> FC["FieldComparator by strategy<br/>EXACT · FUZZY (Dice ≥ .8) · NORMALIZED (ABV, mL, years)<br/>CONTAINS · ENUM (qualifying phrases)"]
-    FC --> MI{"Mismatch on minor field?"}
-    MI -- yes --> NC["NEEDS_CORRECTION"]
-    MI -- no --> ST["MATCH / MISMATCH / NOT_FOUND"]
-    M --> SD
-    NC --> SD
-    ST --> SD["StatusDeterminer → AI-proposed status<br/>mean confidence → overall confidence"]
+    pick -- local --> L1
+    pick -- cloud --> C1
+    L1 --> L2
+    C1 --> C2
+    L2 & C3 --> R["ExtractionResult<br/>(same shape for both)"] --> V
+    C1 -. "error → fall back" .-> L1
+    L1 -. "error → fall back<br/>(if cloud configured)" .-> C1
 ```
 
 <sub>Source: [diagrams/05-ai-pipeline.mmd](diagrams/05-ai-pipeline.mmd)</sub>
 
+Both pipelines return the same `ExtractionResult`. From there the comparison and the verdict don't depend on which engine read the label. The search order, the thresholds and measured accuracy are in [ai-pipelines.md](ai-pipelines.md).
 
-Details are in [ai-pipelines.md](ai-pipelines.md).
-
-## 6. Label status lifecycle
+## 8. Label lifecycle
 
 ```mermaid
 stateDiagram-v2
+    direction LR
     [*] --> PROCESSING: applicant submits
-    PROCESSING --> PENDING_REVIEW: pipeline done (AI proposal stored)
-    PROCESSING --> PENDING: pipeline failed / timed out
-    PROCESSING --> PENDING_REVIEW: stuck > 5 min (lazy recovery)
+
+    state "Automatic analysis" as auto {
+        PROCESSING
+        PENDING
+    }
+    state "Specialist decision" as wait {
+        PENDING_REVIEW
+    }
+    state "Applicant has a deadline" as fix {
+        CONDITIONALLY_APPROVED
+        NEEDS_CORRECTION
+    }
+    state "Final" as done {
+        APPROVED
+        REJECTED
+    }
+
+    PROCESSING --> PENDING_REVIEW: analysis done, AI proposal stored
+    PROCESSING --> PENDING: failed or timed out
+    PROCESSING --> PENDING_REVIEW: stuck over 5 min (lazy)
     PENDING --> PROCESSING: specialist re-analyzes
 
-    PENDING_REVIEW --> APPROVED: batch approve / review / override
-    PENDING_REVIEW --> CONDITIONALLY_APPROVED: minor discrepancy (7-day window)
-    PENDING_REVIEW --> NEEDS_CORRECTION: substantive issue (30-day window)
-    PENDING_REVIEW --> REJECTED: health warning / illegal size
+    PENDING_REVIEW --> APPROVED: batch approve, review or override
+    PENDING_REVIEW --> CONDITIONALLY_APPROVED: minor difference, 7 days
+    PENDING_REVIEW --> NEEDS_CORRECTION: substantive issue, 30 days
+    PENDING_REVIEW --> REJECTED: health warning or illegal size
 
     CONDITIONALLY_APPROVED --> NEEDS_CORRECTION: deadline passed (lazy)
     NEEDS_CORRECTION --> REJECTED: deadline passed (lazy)
 
-    CONDITIONALLY_APPROVED --> APPROVED: specialist override
-    NEEDS_CORRECTION --> APPROVED: specialist override
-    REJECTED --> APPROVED: specialist override
+    CONDITIONALLY_APPROVED --> APPROVED: override
+    NEEDS_CORRECTION --> APPROVED: override
+    REJECTED --> APPROVED: override
 
-    note right of NEEDS_CORRECTION
-        Applicant corrects by submitting a new label
-        linked via prior_label_id
+    note right of fix
+        The applicant fixes a label by submitting
+        a new one linked through prior_label_id
     end note
 ```
 
 <sub>Source: [diagrams/06-label-status.mmd](diagrams/06-label-status.mmd)</sub>
 
+The database stores a status, but every screen and API response shows the **effective** status. That is calculated when the label is read (expired correction windows, analyses stuck in processing) and saved back only when it has changed.
 
-Status is stored, but users see the **effective** status, which is computed on read and persisted when it differs ([ADR-0011](adr/0011-lazy-status-recovery-instead-of-a-scheduler.md)).
-
-## 7. Data model
+## 9. Data view
 
 ```mermaid
 erDiagram
@@ -320,6 +379,8 @@ erDiagram
     USERS ||--o{ HUMAN_REVIEWS : writes
     LABELS ||--o{ STATUS_OVERRIDES : "status audit"
     USERS ||--o{ STATUS_OVERRIDES : writes
+    LABEL_IMAGES ||--o| IMAGE_BLOBS : "bytes when storage=database (by storage_key)"
+    SPRING_SESSION ||--o{ SPRING_SESSION_ATTRIBUTES : holds
 
     USERS {
         varchar id PK
@@ -413,51 +474,79 @@ erDiagram
         text canonical_value
         text variant_value
     }
+    IMAGE_BLOBS {
+        varchar storage_key PK "V2"
+        varchar content_type
+        int size_bytes
+        bytea content
+    }
+    SPRING_SESSION {
+        char primary_id PK "V3"
+        char session_id
+        bigint expiry_time
+        varchar principal_name
+    }
+    SPRING_SESSION_ATTRIBUTES {
+        char session_primary_id PK,FK
+        varchar attribute_name PK
+        bytea attribute_bytes
+    }
 ```
 
 <sub>Source: [diagrams/07-erd.mmd](diagrams/07-erd.mmd)</sub>
 
+- **Identifiers** are random, URL-safe, 21-character strings (`domain/Ids.java`), so IDs reveal nothing about volume or order.
+- **Analysis history is kept.** A re-analysis marks the current `validation_results` row as superseded and adds a new one.
+- **The audit trail is append-only.** `human_reviews` records field decisions and `status_overrides` records label decisions.
+- **Corrections form a chain** through `labels.prior_label_id`.
+- **Runtime settings** are JSON values in `settings`, keyed by name. Deployment settings come from the environment through `AppProperties`.
+- **Sessions** are stored in the Spring Session JDBC tables (Flyway `V3`).
 
-- IDs are 21-character URL-safe random strings (`domain/Ids.java`).
-- The schema is portable between PostgreSQL and H2 ([ADR-0005](adr/0005-portable-sql-schema-for-postgresql-and-h2.md)).
-- `validation_results` keep a history: re-analysis supersedes the current result and never deletes it.
-- `human_reviews` and `status_overrides` are append-only.
-- `labels.prior_label_id` links a correction to the label it corrects.
-
-## 8. Security model
+## 10. Security view
 
 ```mermaid
 flowchart LR
-    req(["HTTP request"]) --> m{"path starts with /api/?"}
-    m -- yes --> api["API chain (@Order 1)<br/>STATELESS · HTTP Basic · CSRF off<br/>session cookie ignored<br/>/api/v1/settings/** → SPECIALIST<br/>401 on missing credentials"]
-    m -- no --> web["Web chain (@Order 2)<br/>form login · session cookie · CSRF tokens<br/>/settings/**, /applicants/** → SPECIALIST<br/>/submit/** → APPLICANT"]
-    api --> hdr["Headers on both: CSP (no inline script/style),<br/>X-Frame-Options DENY, HSTS, nosniff,<br/>Referrer-Policy strict-origin-when-cross-origin"]
-    web --> hdr
-    hdr --> ctl["Controllers"]
-    ctl --> svc["Services with @PreAuthorize<br/>(ReviewService, SettingsService, ApplicantService → SPECIALIST;<br/>SubmissionService, BatchSubmissionService → APPLICANT)"]
-    svc --> data["LabelQueryService data scoping:<br/>applicants see only their company's labels;<br/>others → 404 (existence not leaked)"]
+    req(["Request"]) --> split{"/api/** ?"}
+    split -- yes --> apichain["API chain · @Order(1)<br/>stateless · HTTP Basic · no CSRF<br/>ignores session cookies · 401 when anonymous"]
+    split -- no --> webchain["Web chain · @Order(2)<br/>form login · JDBC session · CSRF<br/>/submit/** → APPLICANT<br/>/settings/**, /applicants/** → SPECIALIST"]
+    apichain --> headers["Response headers on both chains<br/>CSP self-only · frame-ancestors none<br/>HSTS · nosniff · strict referrer"]
+    webchain --> headers
+    headers --> method["Service methods<br/>@PreAuthorize by role"]
+    method --> scope["Data scoping in queries<br/>applicants see only their company<br/>anything else → 404"]
 ```
 
 <sub>Source: [diagrams/08-security.mmd](diagrams/08-security.mmd)</sub>
 
+| Concern | Control |
+|---------|---------|
+| Who you are | Form login with a database-backed session for the UI, and HTTP Basic for the API ([ADR-0006](adr/0006-separate-security-filter-chains-for-api-and-ui.md)). Passwords are hashed with bcrypt. Demo mode (`APP_DEMO_LOGIN`) is off unless it is switched on explicitly. |
+| What you can do | URL rules, then `@PreAuthorize` on services, then company scoping in queries ([ADR-0007](adr/0007-authorization-at-route-method-and-data-layers.md)) |
+| What you can see | Another company's resources return 404, so their existence isn't revealed. Applicants never see AI confidence or reasoning. |
+| Forged requests | CSRF tokens on every UI form. The API ignores cookies entirely. |
+| Hostile input | Bean Validation, image type, size and magic-byte checks, and storage keys that can't escape their directory |
+| Injected content | A CSP with no inline script or style, and no stack traces in any response |
+| Secrets | None in code, defaults or docs ([ADR-0014](adr/0014-no-credentials-in-code-configuration-defaults-or-documentation.md)). Bootstrap passwords come from the environment or are generated and logged once. |
 
-| Layer | Mechanism |
-|-------|-----------|
-| Authentication | Form login + session (UI); stateless HTTP Basic (API) ([ADR-0006](adr/0006-separate-security-filter-chains-for-api-and-ui.md)). Passwords are hashed with bcrypt. Sessions are stored in the database, so they survive restarts ([ADR-0019](adr/0019-http-sessions-stored-in-the-database.md)). Optional demo mode (`APP_DEMO_LOGIN`) adds a passwordless account picker to the login page. |
-| Authorization | Route rules, `@PreAuthorize` on services, and data scoping, with 404 for other companies' resources ([ADR-0007](adr/0007-authorization-at-route-method-and-data-layers.md)) |
-| CSRF | Tokens on every UI form; the API chain never reads cookies |
-| Input | Bean Validation; image type, size and magic-byte checks; path-traversal-safe storage keys |
-| Output | Strict CSP with no inline script or style; no stack traces in responses |
-| Credentials | None in code, configuration defaults or docs ([ADR-0014](adr/0014-no-credentials-in-code-configuration-defaults-or-documentation.md)) |
-| Confidentiality of scoring | Applicants see field statuses, but not AI confidence or reasoning |
+## 11. Presentation view
 
-## 9. Cross-cutting concerns
+The UI is server-rendered HTML. A page is a Thymeleaf template assembled from shared fragments (head, top bar, flash messages, footer) and styled by one token-based stylesheet ([ADR-0021](adr/0021-design-tokens-and-shared-page-chrome.md)). JavaScript only adds conveniences, so every page works without it.
 
-| Concern | Approach |
-|---------|----------|
-| Time | Injected `Clock`; tests run on fixed time |
-| Concurrency | Virtual threads for pipeline timeout and parallel cloud OCR; a new Tesseract instance per pass |
-| Configuration | `AppProperties` (`app.*`) for deployment settings; the `settings` table for runtime settings |
-| Errors | RFC 9457 `ProblemDetail` for the API; friendly error page for the UI |
-| Observability | Actuator health and info; structured logs for pipeline fallbacks and failures |
-| Auditability | Raw pipeline output, model, timings and tokens stored for every analysis run |
+| Role | Screens |
+|------|---------|
+| Applicant | *My submissions* (summary tiles and the list), *New submission* (numbered steps, with pre-fill read from the label), *Batch upload*, *Label detail* (field outcomes and deadlines) |
+| Specialist | *Review dashboard* (SLA tiles and the Ready / Needs review / All queues), *Label detail* (image with overlays, field review, final status, re-analyze, history), *Applicants*, *Settings* |
+| Everyone | *Sign in* (brand panel and form, with the demo-account picker when enabled), *Error* |
+
+Tokens, components, responsive breakpoints and the steps for adding a page are in the [UI guide](ui.md).
+
+## 12. Quality attributes
+
+| Attribute | Approach |
+|-----------|----------|
+| Correctness | Plain-Java rule packages with focused unit tests, plus end-to-end tests that run real OCR on the synthetic labels |
+| Auditability | Every analysis run keeps the raw pipeline output, model, timings and token counts. Every human decision is its own row. |
+| Resilience | Pipeline fallback, a hard timeout, lazy recovery of stuck labels, and sessions that survive restarts |
+| Testability | An injected `Clock`, so tests run on fixed time. H2 in PostgreSQL mode runs the real Flyway scripts. |
+| Concurrency | Virtual threads for the pipeline timeout and parallel cloud OCR. Each OCR pass gets its own Tesseract instance, and a limit caps concurrent OCR jobs. |
+| Operability | Actuator health and info, structured logs for fallbacks and failures, and startup checks that explain missing configuration |
+| Evolvability | Pipelines and storage are interfaces. The queue-based asynchronous design is sketched in [infrastructure.md](infrastructure.md#6-scaling-target) ([ADR-0008](adr/0008-synchronous-analysis-with-timeout-queue-based-evolution.md)). |

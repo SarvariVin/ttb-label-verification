@@ -1,7 +1,8 @@
 # ADR-0019: HTTP sessions stored in the database
 
 - **Status:** Accepted
-- **Date:** 2026-09-24
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

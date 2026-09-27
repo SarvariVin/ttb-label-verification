@@ -21,8 +21,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Bootstraps an empty database with one specialist, one applicant company and
- * its user, and default settings. No labels are seeded — every label goes
+ * Bootstraps an empty database with one specialist, two test applicants (each
+ * with its own company), and default settings. No labels are seeded — every label goes
  * through the real pipeline.
  * <p>
  * Credentials are never hard-coded: the password comes from
@@ -68,17 +68,16 @@ public class DataSeeder implements ApplicationRunner {
         String hash = encoder.encode(password);
 
         users.save(new User("Labeling Specialist", seed.specialistEmail(), hash, UserRole.SPECIALIST, null));
-        Applicant company = applicants.save(new Applicant(seed.applicantCompany(), seed.applicantEmail(),
-                "Applicant Contact", null));
-        users.save(new User("Applicant Contact", seed.applicantEmail(), hash, UserRole.APPLICANT, company));
+        seedApplicant("Test Applicant One", seed.applicantEmail(), seed.applicantCompany(), hash);
+        seedApplicant("Test Applicant Two", seed.applicant2Email(), seed.applicant2Company(), hash);
 
         if (generated) {
-            log.warn("Bootstrap accounts created: {} (specialist), {} (applicant). Generated password: {} "
+            log.warn("Bootstrap accounts created: {} (specialist), {} and {} (applicants). Generated password: {} "
                     + "— set APP_SEED_PASSWORD to choose one, and APP_SEED=false in production.",
-                    seed.specialistEmail(), seed.applicantEmail(), password);
+                    seed.specialistEmail(), seed.applicantEmail(), seed.applicant2Email(), password);
         } else {
-            log.info("Bootstrap accounts created: {} (specialist), {} (applicant).",
-                    seed.specialistEmail(), seed.applicantEmail());
+            log.info("Bootstrap accounts created: {} (specialist), {} and {} (applicants).",
+                    seed.specialistEmail(), seed.applicantEmail(), seed.applicant2Email());
         }
 
         Map<String, String> strictness = new LinkedHashMap<>();
@@ -99,9 +98,14 @@ public class DataSeeder implements ApplicationRunner {
         settings.write(SettingsService.SLA_TARGETS, SettingsService.SlaTargets.DEFAULT);
     }
 
+    private void seedApplicant(String name, String email, String companyName, String hash) {
+        Applicant company = applicants.save(new Applicant(companyName, email, name, null));
+        users.save(new User(name, email, hash, UserRole.APPLICANT, company));
+    }
+
     /**
      * Recovery for lost bootstrap credentials: with {@code APP_SEED_RESET_PASSWORD=true} and a
-     * non-blank {@code APP_SEED_PASSWORD}, the bootstrap specialist and applicant get that password.
+     * non-blank {@code APP_SEED_PASSWORD}, every bootstrap account gets that password.
      * Remove the flag after signing in; it re-applies on every restart while set.
      */
     void resetBootstrapPasswordsIfRequested() {
@@ -114,7 +118,7 @@ public class DataSeeder implements ApplicationRunner {
         }
         String hash = encoder.encode(seed.password());
         int count = 0;
-        for (String email : new String[]{seed.specialistEmail(), seed.applicantEmail()}) {
+        for (String email : seed.emails()) {
             var user = users.findByEmailIgnoreCase(email);
             if (user.isPresent()) {
                 user.get().changePasswordHash(hash);

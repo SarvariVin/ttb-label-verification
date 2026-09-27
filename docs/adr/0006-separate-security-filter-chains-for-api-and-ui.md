@@ -1,7 +1,8 @@
 # ADR-0006: Separate security filter chains for API and UI
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

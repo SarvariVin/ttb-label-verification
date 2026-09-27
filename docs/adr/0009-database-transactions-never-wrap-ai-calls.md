@@ -1,7 +1,8 @@
 # ADR-0009: Database transactions never wrap AI calls
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

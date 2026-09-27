@@ -1,0 +1,23 @@
+%% Container view — runtime units and data stores
+flowchart TB
+    browser(["Browser<br/>server-rendered pages + app.js"])
+    api(["API client"])
+
+    subgraph host["Application container (one JVM, Java 21)"]
+        web["Web layer<br/>Thymeleaf pages · REST /api/v1"]
+        core["Application + rules<br/>services · verdict engine"]
+        adapters["Adapters<br/>OCR · cloud AI · storage · JPA"]
+        tessn["libtesseract<br/>(native, via Tess4J)"]
+        web --> core --> adapters
+        adapters --> tessn
+    end
+
+    db[("PostgreSQL 17<br/>labels · results · audit<br/>sessions · settings<br/>(images when storage=database)")]
+    disk[("Filesystem volume<br/>images when storage=filesystem")]
+    cloud["Google Vision + OpenAI<br/>(only when both keys are set)"]
+
+    browser -- "HTTPS, session cookie + CSRF" --> web
+    api -- "HTTPS, Basic auth, stateless" --> web
+    adapters -- "JDBC, Flyway-owned schema" --> db
+    adapters -- "file I/O" --> disk
+    adapters -. "HTTPS" .-> cloud

@@ -1,0 +1,14 @@
+%% UI page anatomy — how a signed-in page is assembled from shared fragments
+flowchart TB
+    subgraph page["Page template, e.g. dashboard-specialist.html"]
+        head["head(title) fragment<br/>meta · favicon · app.css · app.js (defer)"]
+        topbar["topbar fragment<br/>skip link · brand · role-aware nav · user chip · sign out"]
+        subgraph main["main (id=main)"]
+            ph["page-header<br/>eyebrow · h1 · lead · actions"]
+            flash["flash fragment<br/>success / error alerts"]
+            content["cards · tables · forms"]
+        end
+        footer["footer fragment"]
+    end
+    advice["GlobalModelAdvice<br/>appName · appTagline · currentUser · currentPath"] -. model .-> page
+    fmt["ViewFormat (@fmt)<br/>dateTime · css · humanize · initials · deadline"] -. helpers .-> page

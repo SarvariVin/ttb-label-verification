@@ -1,7 +1,8 @@
 # ADR-0020: Near misses are compared, not assumed
 
 - **Status:** Accepted (extends [ADR-0012](0012-numeric-fields-keep-ocr-text-warning-prefix-must-be-capitals.md))
-- **Date:** 2026-09-24
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

@@ -3,11 +3,13 @@
 <head th:replace="~{fragments/layout :: head('Applicants')}"></head>
 <body>
 <header th:replace="~{fragments/layout :: topbar}"></header>
-<main>
-  <div class="page-header"><div><h1>Applicants</h1><p class="muted">Companies submitting labels.</p></div></div>
+<main id="main">
+  <div class="page-header"><div><p class="eyebrow">Specialist workspace</p><h1>Applicants</h1>
+    <p class="muted">Companies submitting labels, with private notes for the review team.</p></div></div>
   <th:block th:replace="~{fragments/layout :: flash}"></th:block>
   <div class="card">
-    <div class="table-wrap">
+    <div class="empty" th:if="${#lists.isEmpty(rows)}">No applicant companies yet.</div>
+    <div class="table-wrap" th:unless="${#lists.isEmpty(rows)}">
       <table>
         <thead><tr><th>Company</th><th>Contact</th><th>Labels</th><th>Specialist notes</th></tr></thead>
         <tbody>
@@ -27,5 +29,6 @@
     </div>
   </div>
 </main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
 </body>
 </html>

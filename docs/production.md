@@ -1,71 +1,83 @@
 # Production Readiness
 
-What the current build deliberately leaves out, and what a production deployment for a federal agency needs. It is ordered roughly by risk. Target topology, network zones and CI/CD are in [infrastructure.md](infrastructure.md).
+This page lists what the current build leaves out on purpose, and what a federal production deployment would still need. Items are ordered roughly from highest risk to lowest. The target topology, network zones and delivery pipeline are in [infrastructure.md](infrastructure.md).
+
+| # | Area | Status today | Must have before go-live |
+|---|------|--------------|--------------------------|
+| 1 | Identity and access | Local accounts, HTTP Basic API | IdP federation with PIV/CAC and MFA |
+| 2 | Security hardening | Strict CSP, CSRF, magic-byte checks | Rate limits, malware scanning, managed secrets |
+| 3 | Throughput | Analysis runs inside the request | Queue-based workers for real volume |
+| 4 | Storage and records | Filesystem or database images | Encrypted object storage and retention |
+| 5 | AI pipeline | Measured on synthetic labels | A benchmark built from real submissions |
+| 6 | Operations | Health endpoint and logs | Metrics, alerts, tested restores |
+| 7 | Notifications | None | Decision and deadline notices |
+| 8 | Compliance | Accessible markup | ATO package, 508 audit, PIA |
 
 ## 1. Identity and access
 
-| Gap | Recommendation |
-|-----|----------------|
-| Local username/password accounts | Federate to the agency IdP (SAML/OIDC with PIV/CAC and MFA) using `spring-boot-starter-oauth2-client`. Set `APP_SEED=false`. |
-| API uses HTTP Basic | OAuth2 resource server (JWT) with scopes per endpoint |
-| No lockout or password reset | Delegated to the IdP; until then, add throttling on failed logins |
-| Two roles | Add supervisor/manager (settings, reassignment, reporting) and per-specialist queues |
-| Sessions in the application database (Spring Session JDBC) | Sessions already survive restarts and work across instances. At high traffic, move them to Redis to take load off PostgreSQL. |
-| Demo-account picker (`APP_DEMO_LOGIN`) | Keep it off in every non-demo environment. Anyone can sign in while it is on. |
+| Today | What production needs |
+|-------|-----------------------|
+| Local email and password accounts | Federate with the agency IdP (SAML or OIDC, with PIV/CAC and MFA) through `spring-boot-starter-oauth2-client`, and set `APP_SEED=false` |
+| HTTP Basic on the API | An OAuth2 resource server that takes JWTs, with scopes per endpoint |
+| No lockout or password reset | Handled by the IdP. Until then, throttle failed sign-ins. |
+| Two roles | Add a supervisor or manager role (settings, reassignment, reporting) and per-specialist queues |
+| Sessions in the application database (Spring Session JDBC) | These already survive restarts and work across instances. Under heavy traffic, move them to Redis to take load off PostgreSQL. |
+| Bootstrap test accounts (one specialist, two applicants) | Useful for demos only. Set `APP_SEED=false` and manage people through the IdP, or through `APP_USERS` with bcrypt hashes. |
+| The demo-account picker (`APP_DEMO_LOGIN`) | Leave it off everywhere except demos. While it is on, anyone can sign in. |
 
 ## 2. Security hardening
 
-- Rate limiting on login and submission (gateway, or Bucket4j).
-- Malware scanning of uploads (for example a ClamAV sidecar). Re-encode images server-side to strip metadata and polyglots.
-- Secrets in a secrets manager with rotation; never in images or repositories.
-- Workload identity instead of an API key for the OCR service.
-- Dependency, SAST, container scanning and SBOM in CI ([infrastructure.md §5](infrastructure.md#5-cicd-pipeline)).
-- Keep the CSP strict. Future inline code should use nonces, not `unsafe-inline`.
+- Rate-limit sign-in and submission, at the gateway or with Bucket4j.
+- Scan uploads for malware (for example with a ClamAV sidecar), and re-encode images on the server to strip metadata and polyglot content.
+- Keep secrets in a secrets manager with rotation, never in images or repositories.
+- Give the workload its own identity for the OCR service, instead of an API key.
+- Add dependency scanning, static analysis, container scanning and an SBOM to CI ([infrastructure.md §5](infrastructure.md#5-cicd-pipeline)).
+- Keep the CSP strict. If inline code is ever needed, use nonces, not `unsafe-inline`.
 
 ## 3. Throughput
 
-Move analysis to queue-based workers with an outbox, idempotent processing and a dead-letter queue ([infrastructure.md §6](infrastructure.md#6-scaling-target)). Also:
+Move analysis to workers fed by a queue, with a transactional outbox, idempotent processing and a dead-letter queue ([infrastructure.md §6](infrastructure.md#6-scaling-target)). In addition:
 
-- Replace the dashboard's per-label "all fields match" query with an aggregate query or a denormalized column. It is N+1 today.
-- Paginate dashboard and API lists.
+- The dashboard currently checks "every field matches" with a query per label, an N+1 pattern. Replace it with one aggregate query or a denormalized column.
+- Paginate the dashboard and the API lists.
 
 ## 4. Storage and records
 
-- Implement `ImageStorage` for object storage with server-side encryption, and serve images through the existing authorization-checked endpoint or short-lived signed URLs.
-- Apply retention for images and audit records per the agency records schedule.
+- Implement `ImageStorage` on object storage with server-side encryption. Serve images through the existing authorization-checked endpoint, or through short-lived signed URLs.
+- Apply retention to images and audit records according to the agency's records schedule.
 
 ## 5. AI pipeline
 
-- **Versioning:** store pipeline version, prompt hash and model version with every `validation_result`.
-- **Accuracy benchmarking:** build a labeled set of real, consented submissions. Track per-field precision and recall per pipeline, and gate model or prompt changes on it. The synthetic labels are not a substitute.
-- **Authorized providers:** the cloud pipeline sits behind `ExtractionPipeline`. Target FedRAMP-authorized OCR and LLM endpoints.
-- **Image quality gate:** warn on uploads under about 1000 px wide.
-- **Field strictness:** apply the stored strict/moderate/lenient settings to comparison thresholds.
+- **Versioning:** record the pipeline version, a hash of the prompt, and the model version with every `validation_result`.
+- **Accuracy benchmark:** assemble a labeled set of real, consented submissions. Track precision and recall per field and per pipeline, and require model or prompt changes to pass it. Synthetic labels are no substitute.
+- **Approved providers:** the cloud pipeline already sits behind `ExtractionPipeline`. Point it at FedRAMP-authorized OCR and LLM services.
+- **Image quality gate:** warn when an upload is narrower than about 1000 px.
+- **Field strictness:** make the stored strict, moderate and lenient settings actually adjust the comparison thresholds.
 
 ## 6. Operations
 
-- Micrometer metrics: pipeline latency by stage, fallback, timeout and error rates, queue depth, AI–specialist agreement.
-- Structured JSON logs with correlation IDs; alerts on fallback spikes and timeouts.
-- Managed PostgreSQL with point-in-time recovery; Flyway as a separate deploy step.
-- Tested backup restore; RPO/RTO agreed with the program office.
+- Micrometer metrics: pipeline latency per stage, rates of fallbacks, timeouts and errors, queue depth, and how often specialists agree with the AI.
+- Structured JSON logs with correlation IDs, and alerts when fallbacks or timeouts spike.
+- Managed PostgreSQL with point-in-time recovery, and Flyway run as a separate deploy step.
+- A restore that has actually been tested, with RPO and RTO agreed with the program office.
 
 ## 7. Notifications
 
-Notify applicants of decisions and approaching deadlines, using an outbox table so messages are sent only after the transaction commits.
+Tell applicants about decisions and approaching deadlines. Use an outbox table so a message is only sent once its transaction has committed.
 
 ## 8. Compliance and accessibility
 
-- **Section 508 / WCAG 2.1 AA:** semantic HTML, labels and focus styles are in place. Add automated axe checks in CI and a manual screen-reader review.
-- **ATO:** system security plan, continuous monitoring, and tamper-evident audit export (hash chaining or WORM storage).
-- **Privacy:** privacy impact assessment for applicant contact data.
+- **Section 508 / WCAG 2.1 AA:** semantic HTML, labels, visible focus, a skip link and reduced-motion support are already in place ([ui.md](ui.md#accessibility-checklist)). Add automated axe checks to CI, and do a manual screen-reader review.
+- **ATO:** a system security plan, continuous monitoring, and an audit export that can't be tampered with (hash chaining or WORM storage).
+- **Privacy:** a privacy impact assessment covering applicant contact details.
 
 ## 9. Roadmap
 
-Features beyond the current scope:
+Ideas beyond the current scope:
 
-- Interactive image viewer: pan/zoom, click a field to zoom to its box, draw annotations on review.
-- Track which submitted values were accepted unchanged from pre-fill, so specialists can see where an applicant relied on OCR.
-- Dashboard of AI errors (fields specialists most often overturn).
-- Regulation quick-reference linked from each field.
-- Keyboard shortcuts for high-throughput review.
-- Communication letters generated from the decision and field findings.
+- An interactive image viewer: pan and zoom, click a field to jump to its box, and draw annotations while reviewing.
+- Record which submitted values were accepted unchanged from pre-fill, so specialists can see where an applicant relied on OCR.
+- A dashboard of AI mistakes, showing the fields specialists overturn most often.
+- A regulation quick-reference linked from each field.
+- Keyboard shortcuts for fast review.
+- Letters to applicants generated from the decision and the field findings.

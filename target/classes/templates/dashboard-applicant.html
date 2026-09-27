@@ -3,9 +3,10 @@
 <head th:replace="~{fragments/layout :: head('My submissions')}"></head>
 <body>
 <header th:replace="~{fragments/layout :: topbar}"></header>
-<main>
+<main id="main">
   <div class="page-header">
     <div>
+      <p class="eyebrow" th:text="${currentUser.name}">Applicant</p>
       <h1>My submissions</h1>
       <p class="muted">Every label is checked automatically, then confirmed by a TTB specialist.</p>
     </div>
@@ -16,7 +17,27 @@
   </div>
   <th:block th:replace="~{fragments/layout :: flash}"></th:block>
 
+  <section class="grid grid-4" aria-label="Submission summary" th:unless="${#lists.isEmpty(submissions)}">
+    <div class="card stat tone-info">
+      <span class="label">Total submitted</span>
+      <span class="value" th:text="${#lists.size(submissions)}">0</span>
+    </div>
+    <div class="card stat tone-info">
+      <span class="label">In review</span>
+      <span class="value" th:text="${#lists.size(submissions.?[status.name() == 'PENDING' or status.name() == 'PROCESSING' or status.name() == 'PENDING_REVIEW'])}">0</span>
+    </div>
+    <div class="card stat tone-warn">
+      <span class="label">Action needed</span>
+      <span class="value" th:text="${#lists.size(submissions.?[status.name() == 'NEEDS_CORRECTION' or status.name() == 'CONDITIONALLY_APPROVED'])}">0</span>
+    </div>
+    <div class="card stat tone-ok">
+      <span class="label">Approved</span>
+      <span class="value" th:text="${#lists.size(submissions.?[status.name() == 'APPROVED'])}">0</span>
+    </div>
+  </section>
+
   <div class="card">
+    <div class="card-header" th:unless="${#lists.isEmpty(submissions)}"><h2>All submissions</h2></div>
     <div class="empty" th:if="${#lists.isEmpty(submissions)}">
       You have not submitted any labels yet. <a th:href="@{/submit}">Submit your first label</a>.
     </div>
@@ -37,5 +58,6 @@
     </div>
   </div>
 </main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
 </body>
 </html>

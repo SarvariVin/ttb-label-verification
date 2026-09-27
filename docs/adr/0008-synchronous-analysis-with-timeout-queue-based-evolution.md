@@ -1,7 +1,8 @@
 # ADR-0008: Synchronous analysis with timeout; queue-based evolution
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

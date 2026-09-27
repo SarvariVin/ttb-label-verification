@@ -1,11 +1,11 @@
 # Flyway migrations
 
-- Naming: `V<n>__<description>.sql`. Migrations are forward-only: never edit a shipped migration; add a new version.
-- Keep SQL portable between PostgreSQL and H2 (`MODE=PostgreSQL`), per [ADR-0005](../../../../../docs/adr/0005-portable-sql-schema-for-postgresql-and-h2.md):
+- Name files `V<n>__<description>.sql`. Migrations only move forward: once a migration has shipped, never edit it. Add a new version instead.
+- Write SQL that runs on both PostgreSQL and H2 (`MODE=PostgreSQL`), as set out in [ADR-0005](../../../../../docs/adr/0005-portable-sql-schema-for-postgresql-and-h2.md):
   - `VARCHAR` + `CHECK` instead of `CREATE TYPE … AS ENUM`
   - `TEXT` instead of `jsonb` (the application serializes JSON)
   - no reserved words as column names (`value`, `key`, `user`…)
-- Hibernate runs with `ddl-auto: validate`, so startup fails if entities and schema drift apart.
+- Hibernate runs with `ddl-auto: validate`, so the app refuses to start if the entities and the schema drift apart.
 
 | Version | Contents |
 |---------|----------|

@@ -1,7 +1,8 @@
 # ADR-0018: Small-container profile for PaaS hosting
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

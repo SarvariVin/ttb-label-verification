@@ -1,7 +1,8 @@
 # ADR-0004: Local-first OCR with optional cloud AI behind a pipeline interface
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

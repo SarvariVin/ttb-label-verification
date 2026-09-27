@@ -1,25 +1,28 @@
-%% Infrastructure — network zones and allowed flows (deny by default)
-flowchart LR
-    internet(["Internet"]) -->|"443 only"| edge
+%% Infrastructure — network zones; deny by default, numbered flows are the only ones allowed
+flowchart TB
+    internet(["Internet"])
     subgraph edge["Edge zone"]
-        waf["WAF / LB"]
+        waf["WAF / load balancer"]
     end
     subgraph app["Application zone"]
-        svc["App + workers"]
+        svc["App instances + analysis workers"]
     end
     subgraph data["Data zone"]
         db[("PostgreSQL :5432")]
-        obj[("Object storage (private endpoint)")]
+        obj[("Object storage<br/>private endpoint")]
     end
     subgraph mgmt["Management zone"]
-        bastion["Session manager / bastion<br/>(no SSH from internet)"]
+        bastion["Session manager / bastion<br/>no SSH from the internet"]
         ci["CI/CD deploy role"]
     end
-    edge -->|"8080 health-checked"| app
-    app -->|"5432 TLS"| db
-    app -->|"HTTPS private endpoint"| obj
-    app -->|"443 via egress proxy<br/>allow-listed hosts only"| out(["External AI APIs"])
-    mgmt -->|"admin, audited"| app
-    mgmt -->|"migrations"| db
-    internet -. "blocked" .-x data
-    internet -. "blocked" .-x app
+    out(["External AI APIs"])
+
+    internet -->|"① 443 TLS only"| waf
+    waf -->|"② 8080, health-checked"| svc
+    svc -->|"③ 5432 TLS"| db
+    svc -->|"④ HTTPS, private endpoint"| obj
+    svc -->|"⑤ 443 through egress proxy,<br/>allow-listed hosts"| out
+    bastion -->|"⑥ admin, audited"| svc
+    ci -->|"⑦ migrations"| db
+    internet -. "blocked" .-x svc
+    internet -. "blocked" .-x db

@@ -56,7 +56,7 @@ app:
   storage:
     type: ${APP_STORAGE_TYPE:filesystem}   # filesystem | database
     directory: ${APP_STORAGE_DIR:./data/uploads}
-  # Bootstrap accounts on an empty database. Password comes from APP_SEED_PASSWORD;
+  # Bootstrap accounts on an empty database: 1 specialist + 2 test applicants (separate companies). Password comes from APP_SEED_PASSWORD;
   # when unset, a random one is generated and logged once at startup.
   seed:
     enabled: ${APP_SEED:true}
@@ -66,6 +66,8 @@ app:
     specialist-email: ${APP_SEED_SPECIALIST_EMAIL:specialist@example.gov}
     applicant-email: ${APP_SEED_APPLICANT_EMAIL:applicant@example.com}
     applicant-company: ${APP_SEED_APPLICANT_COMPANY:Sample Distilling Co.}
+    applicant2-email: ${APP_SEED_APPLICANT2_EMAIL:applicant.two@example.com}
+    applicant2-company: ${APP_SEED_APPLICANT2_COMPANY:Sample Winery LLC}
   # Extra accounts, as a JSON array (see docs/user-accounts.md). Prefer bcrypt hashes over plain passwords.
   users: ${APP_USERS:}
   # Demo mode: account picker on the login page, sign-in without password. OFF by default.

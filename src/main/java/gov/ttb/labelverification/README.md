@@ -1,6 +1,6 @@
-# `gov.ttb.labelverification` — package guide
+# `gov.ttb.labelverification`: package guide
 
-Dependencies point downward: `web → service → ai / labels / regulatory → domain / repository / storage`. See [ADR-0002](../../../../../../docs/adr/0002-modular-monolith-with-pure-rule-packages.md).
+The packages form layers, and dependencies only point downward: `web → service → ai / labels / regulatory → domain / repository / storage`. The rule packages (`regulatory`, `labels`, `ai.compare`, `ai.prefill`) are plain Java and never import Spring. See [ADR-0002](../../../../../../docs/adr/0002-modular-monolith-with-pure-rule-packages.md) and the [layered view](../../../../../../docs/architecture.md#4-layered-component-view).
 
 | Package | Contents | Notes |
 |---------|----------|-------|
@@ -17,11 +17,11 @@ Dependencies point downward: `web → service → ai / labels / regulatory → d
 | `storage` | `ImageStorage`, `LocalImageStorage`, `DatabaseImageStorage`, `ImageFileValidator` | `app.storage.type` picks filesystem or database; swap in object storage here |
 | `service` | Submission, batch, analysis, extraction routing, review, queries, SLA, settings, applicants | Transactions and `@PreAuthorize` live here |
 | `security` | `AppUserPrincipal`, `AppUserDetailsService`, `DemoLoginService` | Demo sign-in only when `APP_DEMO_LOGIN=true` |
-| `config` | `SecurityConfig`, `AppProperties` (`app.*`), `DataSeeder`, `UserProvisioner` (`APP_USERS`), `DatabaseUrlEnvironmentPostProcessor`, `ClockConfig` | Sessions are stored in the database by Spring Session JDBC (no code; tables in Flyway `V3`) |
-| `web.page` | Thymeleaf controllers, `ViewFormat` (`@fmt`), `PageExceptionHandler` | |
+| `config` | `SecurityConfig`, `AppProperties` (`app.*`), `DataSeeder` (one specialist and two test applicants on an empty database), `UserProvisioner` (`APP_USERS`), `DatabaseUrlEnvironmentPostProcessor`, `ClockConfig` | Spring Session JDBC keeps sessions in the database, with no code of its own and tables in Flyway `V3` |
+| `web.page` | Thymeleaf controllers, `GlobalModelAdvice` (`appName`, `currentUser`, `currentPath`), `ViewFormat` (`@fmt`), `PageExceptionHandler` | Templates share `fragments/layout.html`, and styling follows the [UI guide](../../../../../../docs/ui.md) |
 | `web.api` | REST controllers, DTOs, `ApiExceptionHandler` (RFC 9457) | |
 
-## Conventions
+## Conventions every package follows
 
 - The API returns DTO records, never entities. Templates may read entities loaded through entity graphs (`open-in-view` is off).
 - Network and AI calls never run inside a database transaction.

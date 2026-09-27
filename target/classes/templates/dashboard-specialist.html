@@ -3,21 +3,26 @@
 <head th:replace="~{fragments/layout :: head('Dashboard')}"></head>
 <body>
 <header th:replace="~{fragments/layout :: topbar}"></header>
-<main>
+<main id="main">
   <div class="page-header">
     <div>
+      <p class="eyebrow">Specialist workspace</p>
       <h1>Review dashboard</h1>
       <p class="muted">Analysis is already done — approve what the AI verified, review the rest.</p>
+    </div>
+    <div class="actions">
+      <a class="btn" th:href="@{/applicants}">Applicants</a>
+      <a class="btn" th:href="@{/settings}">Settings</a>
     </div>
   </div>
   <th:block th:replace="~{fragments/layout :: flash}"></th:block>
 
   <section class="grid grid-4" aria-label="Service levels">
     <div class="card stat" th:each="m : ${sla.metrics}" th:classappend="'sla-' + ${@fmt.css(m.status)}">
-      <span class="muted small" th:text="${m.name}">Metric</span>
+      <span class="label" th:text="${m.name}">Metric</span>
       <span class="value" th:text="${m.value}">0</span>
-      <span class="small"><span class="badge" th:classappend="'badge-' + ${@fmt.css(m.status)}" th:text="${m.status.label()}">On target</span>
-        <span class="muted">target <span th:text="${m.target}"></span></span></span>
+      <span class="meta"><span class="badge" th:classappend="'badge-' + ${@fmt.css(m.status)}" th:text="${m.status.label()}">On target</span>
+        <span>target <span th:text="${m.target}"></span></span></span>
     </div>
   </section>
 
@@ -52,7 +57,8 @@
             </tbody>
           </table>
         </div>
-        <div class="actions"><button class="btn btn-primary" type="submit">Approve selected</button></div>
+        <div class="actions"><button class="btn btn-primary" type="submit">Approve selected</button>
+          <span class="small muted">Each approval is recorded in the label's decision history.</span></div>
       </th:block>
     </form>
 
@@ -81,5 +87,6 @@
     </th:block>
   </div>
 </main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
 </body>
 </html>

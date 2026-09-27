@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Each significant design decision is recorded as an ADR (context, decision, consequences, alternatives). Accepted ADRs are not edited; a new ADR supersedes an old one. Start new records from [template.md](template.md).
+Every significant design decision gets a short record: the situation, the decision, what follows from it, and the options that were turned down. Once a record is accepted it stays as written. A later decision gets a new record that extends or supersedes the old one. Use [template.md](template.md) for new records.
 
 | ADR | Decision | Status |
 |-----|----------|--------|
@@ -24,3 +24,4 @@ Each significant design decision is recorded as an ADR (context, decision, conse
 | [ADR-0018](0018-small-container-profile-for-paas-hosting.md) | Small-container profile for PaaS hosting | Accepted |
 | [ADR-0019](0019-http-sessions-stored-in-the-database.md) | HTTP sessions stored in the database | Accepted |
 | [ADR-0020](0020-near-misses-are-compared-not-assumed.md) | Near misses are compared, not assumed | Accepted (extends ADR-0012) |
+| [ADR-0021](0021-design-tokens-and-shared-page-chrome.md) | Design tokens and shared page chrome | Accepted (extends ADR-0003) |

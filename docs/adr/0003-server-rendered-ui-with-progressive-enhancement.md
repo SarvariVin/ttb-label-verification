@@ -1,7 +1,8 @@
 # ADR-0003: Server-rendered UI with progressive enhancement
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

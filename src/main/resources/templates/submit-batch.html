@@ -3,9 +3,10 @@
 <head th:replace="~{fragments/layout :: head('Batch upload')}"></head>
 <body>
 <header th:replace="~{fragments/layout :: topbar}"></header>
-<main>
+<main id="main">
   <div class="page-header">
     <div>
+      <p class="eyebrow"><a th:href="@{/}">← My submissions</a></p>
       <h1>Batch upload</h1>
       <p class="muted">Submit up to 50 labels at once with a CSV file and the matching images.</p>
     </div>
@@ -58,5 +59,6 @@
     </div>
   </div>
 </main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
 </body>
 </html>

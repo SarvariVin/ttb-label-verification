@@ -17,6 +17,13 @@
     <name>TTB Label Verification</name>
     <description>AI-assisted COLA label compliance verification for TTB labeling specialists</description>
 
+    <developers>
+        <developer>
+            <id>SarvariVin</id>
+            <name>SarvariVin</name>
+        </developer>
+    </developers>
+
     <properties>
         <java.version>21</java.version>
         <tess4j.version>5.13.0</tess4j.version>

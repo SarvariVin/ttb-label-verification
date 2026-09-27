@@ -1,7 +1,8 @@
 # ADR-0001: Record architecture decisions
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

@@ -1,20 +1,24 @@
-%% Infrastructure — developer workstation
-flowchart LR
-    dev(["Developer"]) --> browser["Browser<br/>localhost:8080"]
-    dev --> cli["curl / API client<br/>HTTP Basic"]
-    subgraph ws["Workstation (macOS / Linux)"]
-        jvm["JVM 21<br/>./mvnw spring-boot:run"]
+%% Infrastructure — developer workstation, two ways to run
+flowchart TB
+    dev(["Developer"]) --> browser["Browser · localhost:8080"]
+    dev --> cli["curl / API client · HTTP Basic"]
+
+    subgraph ws["Workstation — macOS or Linux"]
+        jvm["JVM 21 · ./mvnw spring-boot:run"]
         tess["Tesseract 5<br/>libtesseract + eng.traineddata"]
-        h2[("H2 in-memory<br/>profile: demo")]
-        fs[("./data/uploads")]
-        subgraph compose["docker compose (optional)"]
-            pg[("PostgreSQL 17<br/>127.0.0.1:5432")]
+        jvm -- "JNA" --> tess
+
+        subgraph demo["Mode A — profile demo (zero setup)"]
+            h2[("H2 in memory<br/>lost on restart")]
+            fs1[("./data/demo-uploads")]
+        end
+        subgraph std["Mode B — default profile"]
+            pg[("PostgreSQL 17 via docker compose<br/>127.0.0.1:5432")]
+            fs2[("./data/uploads")]
         end
     end
-    browser --> jvm
-    cli --> jvm
-    jvm -- JNA --> tess
-    jvm -- "profile: demo" --> h2
-    jvm -- "default profile" --> pg
-    jvm --> fs
+
+    browser & cli --> jvm
+    jvm --> h2 & fs1
+    jvm --> pg & fs2
     jvm -. "optional HTTPS" .-> ext["Google Vision / OpenAI"]

@@ -1,38 +1,42 @@
-%% Infrastructure — production reference topology (cloud-neutral)
-flowchart TB
-    users(["Specialists (agency network / VPN)"]) --> waf
-    apps(["Applicants (internet)"]) --> waf
-    idp["Agency identity provider<br/>SAML / OIDC (PIV/CAC, MFA)"]
+%% Infrastructure — production reference topology (cloud-neutral), left to right by zone
+flowchart LR
+    spec(["Specialists<br/>agency network / VPN"])
+    appl(["Applicants<br/>internet"])
 
     subgraph edge["Edge zone"]
-        waf["WAF + DDoS protection"] --> lb["Load balancer<br/>TLS 1.2+ termination"]
+        direction TB
+        waf["WAF + DDoS protection"] --> lb["Load balancer<br/>TLS 1.2+"]
     end
 
-    subgraph appzone["Application zone (private subnets, 2+ availability zones)"]
+    subgraph appzone["Application zone — private subnets, 2+ availability zones"]
+        direction TB
         a1["App instance A"]
         a2["App instance B"]
-        w1["Analysis workers<br/>(Tesseract, CPU-sized)"]
         q[("Work queue<br/>+ dead-letter queue")]
+        w1["Analysis workers<br/>Tesseract, sized by CPU"]
+        q --> w1
     end
 
-    subgraph datazone["Data zone (no internet route)"]
+    subgraph datazone["Data zone — no internet route"]
+        direction TB
         db[("Managed PostgreSQL<br/>multi-AZ · PITR · encrypted")]
         obj[("Object storage<br/>SSE · versioning · lifecycle")]
-        sess[("Session store<br/>Redis / JDBC")]
+        sess[("Session store<br/>JDBC or Redis")]
     end
 
     subgraph shared["Shared services"]
+        direction TB
+        idp["Agency IdP<br/>SAML / OIDC · PIV/CAC · MFA"]
         sm["Secrets manager"]
         obs["Logs · metrics · traces · alerts"]
-        egress["Egress proxy / allow-list"]
+        egress["Egress proxy<br/>allow-list"]
     end
 
+    spec & appl --> waf
     lb --> a1 & a2
-    a1 & a2 -. OIDC .-> idp
-    a1 & a2 --> q --> w1
-    a1 & a2 & w1 --> db
-    a1 & a2 & w1 --> obj
+    a1 & a2 --> q
+    a1 & a2 & w1 --> db & obj
     a1 & a2 --> sess
-    a1 & a2 & w1 -. read secrets .-> sm
-    a1 & a2 & w1 -. telemetry .-> obs
-    w1 -. "optional cloud AI (authorized services only)" .-> egress --> ai["OCR / LLM endpoints"]
+    a1 & a2 -. "OIDC" .-> idp
+    a1 & a2 & w1 -. "secrets · telemetry" .-> sm & obs
+    w1 -. "optional cloud AI,<br/>authorized services only" .-> egress --> ai["OCR / LLM endpoints"]

@@ -1,7 +1,8 @@
 # ADR-0010: Pipeline fallback in both directions, not on timeout
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

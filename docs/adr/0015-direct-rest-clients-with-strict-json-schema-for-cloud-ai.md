@@ -1,7 +1,8 @@
 # ADR-0015: Direct REST clients with strict JSON schema for cloud AI
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

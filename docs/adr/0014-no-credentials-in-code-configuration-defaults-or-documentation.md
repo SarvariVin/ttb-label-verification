@@ -1,7 +1,8 @@
 # ADR-0014: No credentials in code, configuration defaults or documentation
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

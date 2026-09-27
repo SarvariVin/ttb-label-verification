@@ -3,6 +3,7 @@
 <head th:fragment="head(title)">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title th:text="${title} + ' · ' + ${appName}">Label Verification</title>
   <link rel="icon" th:href="@{/favicon.svg}" type="image/svg+xml">
   <link rel="stylesheet" th:href="@{/css/app.css}">
@@ -11,24 +12,37 @@
 <body>
 
 <header th:fragment="topbar" class="topbar">
-  <a class="brand" th:href="@{/}">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 4 7v8c0 7.2 5.1 13.4 12 15 6.9-1.6 12-7.8 12-15V7L16 2z" fill="currentColor"/><path d="m11 16 3.5 3.5L21.5 12" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <span th:text="${appName}">Label Verification</span>
-  </a>
-  <nav class="nav" aria-label="Main">
-    <a th:href="@{/}">Dashboard</a>
-    <th:block sec:authorize="hasRole('APPLICANT')">
-      <a th:href="@{/submit}">New submission</a>
-      <a th:href="@{/submit/batch}">Batch upload</a>
-    </th:block>
-    <th:block sec:authorize="hasRole('SPECIALIST')">
-      <a th:href="@{/applicants}">Applicants</a>
-      <a th:href="@{/settings}">Settings</a>
-    </th:block>
-  </nav>
-  <div class="user" th:if="${currentUser != null}">
-    <span><span th:text="${currentUser.name}">Name</span> · <span th:text="${#strings.capitalize(#strings.toLowerCase(currentUser.role.name()))}">Role</span></span>
-    <form th:action="@{/logout}" method="post"><button class="btn btn-link" type="submit">Sign out</button></form>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="topbar-inner">
+    <a class="brand" th:href="@{/}">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path d="M16 3 5 7.5v7.3c0 6.6 4.6 12.3 11 13.9 6.4-1.6 11-7.3 11-13.9V7.5L16 3z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="m11.5 16 3.2 3.2 6.3-6.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-name" th:text="${appName}">Label Verification</span>
+        <span class="brand-tag" th:text="${appTagline}">COLA label compliance review</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a th:href="@{/}" th:aria-current="${currentPath == '/' or #strings.startsWith(currentPath, '/labels')} ? 'page'">Dashboard</a>
+      <th:block sec:authorize="hasRole('APPLICANT')">
+        <a th:href="@{/submit}" th:aria-current="${currentPath == '/submit'} ? 'page'">New submission</a>
+        <a th:href="@{/submit/batch}" th:aria-current="${currentPath == '/submit/batch'} ? 'page'">Batch upload</a>
+      </th:block>
+      <th:block sec:authorize="hasRole('SPECIALIST')">
+        <a th:href="@{/applicants}" th:aria-current="${currentPath == '/applicants'} ? 'page'">Applicants</a>
+        <a th:href="@{/settings}" th:aria-current="${currentPath == '/settings'} ? 'page'">Settings</a>
+      </th:block>
+    </nav>
+    <div class="user" th:if="${currentUser != null}">
+      <span class="avatar avatar-sm" th:classappend="${currentUser.specialist} ? 'avatar-specialist' : 'avatar-applicant'"
+            th:text="${@fmt.initials(currentUser.name)}" aria-hidden="true">AB</span>
+      <span class="user-who">
+        <span class="user-name" th:text="${currentUser.name}">Name</span>
+        <span class="user-role" th:text="${#strings.capitalize(#strings.toLowerCase(currentUser.role.name()))}">Role</span>
+      </span>
+      <form th:action="@{/logout}" method="post"><button class="btn btn-ghost btn-sm" type="submit">Sign out</button></form>
+    </div>
   </div>
 </header>
 
@@ -36,6 +50,12 @@
   <div class="alert alert-ok" role="status" th:if="${flash}" th:text="${flash}"></div>
   <div class="alert alert-bad" role="alert" th:if="${flashError}" th:text="${flashError}"></div>
 </th:block>
+
+<footer th:fragment="footer" class="site-footer">
+  <span th:text="${appName}">TTB Label Verification</span>
+  <span aria-hidden="true">·</span>
+  <span>AI proposes, a specialist decides</span>
+</footer>
 
 </body>
 </html>

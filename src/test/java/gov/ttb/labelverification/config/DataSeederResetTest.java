@@ -22,7 +22,8 @@ class DataSeederResetTest {
     private static AppProperties props(String password, boolean reset) {
         return new AppProperties(
                 new AppProperties.Storage("filesystem", "./target/x"),
-                new AppProperties.Seed(true, password, reset, "specialist@example.gov", "applicant@example.com", "Co"),
+                new AppProperties.Seed(true, password, reset, "specialist@example.gov", "applicant@example.com", "Co",
+                        "applicant.two@example.com", "Co 2"),
                 new AppProperties.Pipeline(Duration.ofSeconds(60)),
                 new AppProperties.Ocr(null, null, "eng", 1),
                 new AppProperties.Cloud(null, null, "m", "u"));
@@ -37,18 +38,21 @@ class DataSeederResetTest {
     }
 
     @Test
-    void resetsBothBootstrapAccountsWhenRequested() {
+    void resetsEveryBootstrapAccountWhenRequested() {
         UserRepository users = mock(UserRepository.class);
         User specialist = existing("specialist@example.gov");
         User applicant = existing("applicant@example.com");
-        when(users.count()).thenReturn(2L);
+        User applicant2 = existing("applicant.two@example.com");
+        when(users.count()).thenReturn(3L);
         when(users.findByEmailIgnoreCase("specialist@example.gov")).thenReturn(Optional.of(specialist));
         when(users.findByEmailIgnoreCase("applicant@example.com")).thenReturn(Optional.of(applicant));
+        when(users.findByEmailIgnoreCase("applicant.two@example.com")).thenReturn(Optional.of(applicant2));
 
         seeder(users, props("New-Strong-Passw0rd!", true)).run(null);
 
         assertThat(encoder.matches("New-Strong-Passw0rd!", specialist.getPasswordHash())).isTrue();
         assertThat(encoder.matches("New-Strong-Passw0rd!", applicant.getPasswordHash())).isTrue();
+        assertThat(encoder.matches("New-Strong-Passw0rd!", applicant2.getPasswordHash())).isTrue();
     }
 
     @Test

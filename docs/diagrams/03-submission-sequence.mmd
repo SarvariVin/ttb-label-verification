@@ -1,38 +1,54 @@
-%% Applicant submission — the specialist never waits for AI
+%% Submission — three phases; the slow AI step runs with no transaction open
 sequenceDiagram
     autonumber
     actor A as Applicant
-    participant C as SubmitController / LabelApiController
-    participant S as SubmissionService
-    participant V as ImageFileValidator
-    participant FS as ImageStorage
-    participant DB as Database
-    participant AN as LabelAnalysisService
-    participant X as ExtractionService
-    participant P as Pipeline (local or cloud)
+    box Web
+        participant C as SubmitController /<br/>LabelApiController
+    end
+    box Application
+        participant S as SubmissionService
+        participant AN as LabelAnalysisService
+        participant X as ExtractionService
+    end
+    box Adapters
+        participant ST as ImageFileValidator +<br/>ImageStorage
+        participant P as Pipeline<br/>(local or cloud)
+        participant DB as Database
+    end
 
-    A->>C: POST form data + images (multipart)
-    C->>C: Bean Validation (LabelApplicationForm)
+    A->>C: multipart POST — form fields + 1–6 images
+    C->>C: Bean Validation of LabelApplicationForm
+
+    rect rgba(47, 111, 179, 0.08)
+    Note over C,DB: Phase 1 — intake (TX1)
     C->>S: submit(user, form, images)
-    loop each image
-        S->>V: validate(bytes, declared type)
-        V-->>S: detected type (magic bytes)
-        S->>FS: store(bytes)
+    loop for every image
+        S->>ST: check magic bytes & size, then store bytes
     end
-    S->>DB: TX1 insert label (PROCESSING) + application_data + label_images
+    S->>DB: TX1 — label PROCESSING + application_data + label_images
+    end
+
+    rect rgba(201, 162, 39, 0.10)
+    Note over S,P: Phase 2 — analysis (no transaction open)
     S->>AN: analyze(labelId)
-    AN->>DB: TX2 load expected fields + image keys
-    AN->>FS: load image bytes
-    AN->>X: extract(images, type, expected)
-    X->>P: run with timeout (60s)
-    alt primary pipeline fails
-        X->>P: fallback pipeline (if available)
+    AN->>DB: TX2 (read-only) — expected fields + image keys
+    AN->>ST: load image bytes
+    AN->>X: extract(images, beverage type, expected fields)
+    X->>P: run, bounded by 60 s
+    opt the chosen pipeline throws
+        X->>P: try the other pipeline, if available
     end
-    P-->>X: ExtractionResult (fields, boxes, metrics)
+    P-->>X: ExtractionResult — values, boxes, timings
     X-->>AN: result
-    AN->>AN: FieldComparator per field → StatusDeterminer
-    AN->>DB: TX3 insert validation_result + items,<br/>label → PENDING_REVIEW, ai_proposed_status, confidence
-    AN-->>S: Outcome
+    AN->>AN: FieldComparator per field, then StatusDeterminer
+    end
+
+    rect rgba(29, 122, 70, 0.08)
+    Note over AN,DB: Phase 3 — results (TX3)
+    AN->>DB: TX3 — validation_result + items,<br/>label PENDING_REVIEW with AI proposal + confidence
+    end
+
+    AN-->>S: outcome
     S-->>C: SubmissionResult
-    C-->>A: 201 Created / redirect to label page
-    Note over S,DB: On failure the label is set to PENDING (retry via Re-analyze). A label stuck in PROCESSING surfaces as PENDING_REVIEW after 5 minutes.
+    C-->>A: 201 Created, or redirect to the label page
+    Note over A,DB: Failure or timeout → label stays PENDING (Re-analyze retries).<br/>Stuck in PROCESSING for 5 min → shown as PENDING_REVIEW.

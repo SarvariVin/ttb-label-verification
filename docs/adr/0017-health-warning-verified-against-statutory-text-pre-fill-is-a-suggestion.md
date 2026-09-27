@@ -1,7 +1,8 @@
 # ADR-0017: Health warning verified against statutory text; pre-fill is a suggestion
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

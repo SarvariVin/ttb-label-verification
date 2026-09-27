@@ -1,7 +1,8 @@
 # ADR-0016: Synthetic sample labels
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

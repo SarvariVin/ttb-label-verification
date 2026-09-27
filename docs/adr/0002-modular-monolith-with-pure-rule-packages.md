@@ -1,7 +1,8 @@
 # ADR-0002: Modular monolith with pure rule packages
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

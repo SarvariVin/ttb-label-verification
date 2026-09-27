@@ -1,7 +1,8 @@
 # ADR-0007: Authorization at route, method and data layers
 
 - **Status:** Accepted
-- **Date:** 2026-09-23
+- **Date:** 2026-09-27
+- **Author:** SarvariVin
 
 ## Context
 

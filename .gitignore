@@ -1,0 +1,16 @@
+# Build output
+target/
+
+# Local secrets and data. data/demo-uploads holds four tracked sample uploads
+# (added with git add -f); anything new the app writes there stays untracked.
+.env
+data/
+
+# Local tooling
+.claude/
+.idea/
+*.iml
+.vscode/
+
+# OS files
+.DS_Store

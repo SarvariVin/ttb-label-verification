@@ -1,31 +1,32 @@
-%% Specialist review paths
-sequenceDiagram
-    autonumber
-    actor SP as Specialist
-    participant UI as Dashboard / Label page
-    participant R as ReviewService
-    participant DB as Database
+%% Specialist decisions — four paths from the dashboard, each audited
+flowchart TB
+    dash(["Review dashboard<br/>effective status computed on read,<br/>saved back only if it changed"]) --> tabs{"Which queue?"}
+    tabs -- "Ready to approve" --> ba
+    tabs -- "Needs review / All" --> open["Open a label"]
+    open --> how{"What does the<br/>specialist do?"}
+    how -- "fix individual fields" --> fr
+    how -- "decide the whole label" --> ov
+    how -- "run the check again" --> ra
 
-    SP->>UI: Open dashboard
-    UI->>DB: queues (effective status computed & persisted lazily)
-    UI-->>SP: Ready to approve | Needs review | All
+    subgraph ba["Batch approve — up to 100 labels"]
+        direction TB
+        ba1["For each label, in its own transaction"] --> ba2{"Still PENDING_REVIEW,<br/>confidence ≥ threshold,<br/>every item MATCH?"}
+        ba2 -- yes --> ba3["status_override row (audit)<br/>label → APPROVED"]
+        ba2 -- no --> ba4["returned in failedIds"]
+    end
 
-    alt Batch approve (Ready to approve tab)
-        SP->>R: batchApprove(ids ≤ 100)
-        loop each label — own transaction
-            R->>DB: re-check PENDING_REVIEW, confidence ≥ threshold, all items MATCH
-            R->>DB: insert status_override (audit) + label → APPROVED
-        end
-        R-->>SP: approvedCount, failedIds
-    else Field-level review
-        SP->>R: submitReview(labelId, [itemId → MATCH|MISMATCH|NOT_FOUND, note])
-        R->>DB: insert human_review per changed field (original status read from DB)
-        R->>R: StatusDeterminer over resolved items
-        R->>DB: label → derived status + correction deadline (7 / 30 days)
-    else Label-level override
-        SP->>R: overrideStatus(labelId, decision, justification ≥ 10 chars)
-        R->>DB: insert status_override + label → decision
-    else Re-analyze
-        SP->>R: reanalyze(labelId)
-        R->>DB: supersede current validation_result, insert new one
+    subgraph fr["Field review"]
+        direction TB
+        fr1["Resolve fields as MATCH / MISMATCH / NOT_FOUND + note"] --> fr2["human_reviews row per changed field<br/>(original status read from the database)"]
+        fr2 --> fr3["StatusDeterminer over resolved items<br/>→ new status + 7- or 30-day deadline"]
+    end
+
+    subgraph ov["Status override"]
+        direction TB
+        ov1["Decision + justification (≥ 10 characters)"] --> ov2["status_override row<br/>label → decision"]
+    end
+
+    subgraph ra["Re-analyze"]
+        direction TB
+        ra1["Run the pipeline with current settings"] --> ra2["Current validation_result superseded,<br/>new one inserted"]
     end
